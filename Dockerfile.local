@@ -12,7 +12,8 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     google-cloud-storage \
     python-dotenv \
-    requests
+    requests \
+    discord.py
 
 # Create directories
 RUN mkdir -p /app/exports /app/logs /app/config

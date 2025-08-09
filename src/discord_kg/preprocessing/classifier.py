@@ -1,6 +1,6 @@
 """LLM-based message classification"""
 
-from typing import Dict, Any, Literal
+from typing import Dict, Any, List, Literal
 from enum import Enum
 
 MessageType = Literal["question", "answer", "alert", "strategy"]

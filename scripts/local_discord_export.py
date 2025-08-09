@@ -27,13 +27,14 @@ def setup_logging(log_level: str = "INFO"):
 
 def main():
     parser = argparse.ArgumentParser(description="Local Discord Export and Processing")
-    parser.add_argument('--token', required=True, help='Discord token (user or bot)')
+    parser.add_argument('--token', help='Discord token (user or bot)')
     parser.add_argument('--exporter-path', help='Path to DiscordChatExporter.Cli executable')
     
     # Export options
-    export_group = parser.add_mutually_exclusive_group(required=True)
+    export_group = parser.add_mutually_exclusive_group()
     export_group.add_argument('--channels', nargs='+', help='Discord channel IDs to export')
     export_group.add_argument('--guild', help='Discord guild/server ID to export entirely')
+    export_group.add_argument('--process-only', help='Process existing exported files from directory')
     
     # Processing options
     parser.add_argument('--output-dir', help='Directory to save exported files (default: temp dir)')
@@ -41,7 +42,6 @@ def main():
                        help='Keep exported JSON files after processing')
     parser.add_argument('--export-only', action='store_true',
                        help='Only export, do not process through pipeline')
-    parser.add_argument('--process-only', help='Process existing exported files from directory')
     
     # Export filters
     parser.add_argument('--date-after', help='Export messages after date (YYYY-MM-DD)')
@@ -50,6 +50,17 @@ def main():
     parser.add_argument('--log-level', default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'])
     
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.process_only:
+        # Process-only mode doesn't need token or export options
+        pass
+    else:
+        # Export mode requires token and either channels or guild
+        if not args.token:
+            parser.error("--token is required when exporting (not needed for --process-only)")
+        if not args.channels and not args.guild:
+            parser.error("Either --channels or --guild is required when exporting")
     
     setup_logging(args.log_level)
     logger = logging.getLogger(__name__)
@@ -151,9 +162,10 @@ def main():
         return 1
 
 def process_existing_files(directory: str, logger) -> int:
-    """Process existing exported JSON files"""
+    """Process existing exported JSON files using simplified processing"""
     try:
-        from discord_kg.ingestion.orchestrator import IngestionOrchestrator
+        import json
+        from discord_kg.ingestion.discord_client import DiscordIngestor
         
         dir_path = Path(directory)
         if not dir_path.exists():
@@ -168,29 +180,70 @@ def process_existing_files(directory: str, logger) -> int:
         
         logger.info(f"Found {len(json_files)} JSON files to process")
         
-        # Initialize orchestrator
-        orchestrator = IngestionOrchestrator()
+        # Load messages using the basic ingestor (no orchestrator dependencies)
+        ingestor = DiscordIngestor()
+        all_messages = []
         
-        # Process files
-        messages = orchestrator.ingest_from_local_files(json_files)
+        for json_file in json_files:
+            if 'manifest.json' in json_file.name:
+                continue  # Skip manifest files
+                
+            messages = ingestor.load_exported_json(json_file)
+            all_messages.extend(messages)
+            logger.info(f"Loaded {len(messages)} messages from {json_file.name}")
         
-        if not messages:
+        if not all_messages:
             logger.warning("No messages loaded from files")
             return 0
         
-        logger.info(f"📊 Loaded {len(messages)} messages from {len(json_files)} files")
+        logger.info(f"📊 Total loaded messages: {len(all_messages)}")
         
-        # Process through pipeline
-        results = orchestrator.process_messages(messages)
+        # Simple processing without full pipeline dependencies
+        channels = set(msg.get('channel_name') for msg in all_messages if msg.get('channel_name'))
+        authors = set(msg.get('author_name') for msg in all_messages if msg.get('author_name'))
+        content_messages = [msg for msg in all_messages if msg.get('content')]
+        
+        # Basic content analysis
+        total_chars = sum(len(msg.get('content', '')) for msg in content_messages)
+        avg_message_length = total_chars / len(content_messages) if content_messages else 0
+        
+        # Simple "knowledge" indicators
+        question_indicators = ['?', 'how', 'what', 'why', 'when', 'where', 'who']
+        potential_questions = []
+        
+        for msg in content_messages:
+            content_lower = msg.get('content', '').lower()
+            if any(indicator in content_lower for indicator in question_indicators):
+                potential_questions.append(msg)
+        
+        # Create results summary
+        results = {
+            'summary': {
+                'total_messages': len(all_messages),
+                'content_messages': len(content_messages),
+                'channels': len(channels),
+                'authors': len(authors),
+                'potential_questions': len(potential_questions),
+                'avg_message_length': round(avg_message_length, 2),
+                'total_characters': total_chars
+            },
+            'channels_list': list(channels),
+            'authors_list': list(authors),
+            'sample_questions': potential_questions[:5]  # First 5 questions
+        }
         
         # Log results
         summary = results['summary']
         logger.info(f"📈 Processing Summary:")
-        logger.info(f"  - Extracted triples: {summary['extracted_triples']}")
+        logger.info(f"  - Total messages: {summary['total_messages']}")
+        logger.info(f"  - Content messages: {summary['content_messages']}")
+        logger.info(f"  - Channels: {summary['channels']}")
+        logger.info(f"  - Authors: {summary['authors']}")
+        logger.info(f"  - Potential questions: {summary['potential_questions']}")
+        logger.info(f"  - Avg message length: {summary['avg_message_length']} chars")
         
         # Save results
         results_file = dir_path / 'processing_results.json'
-        import json
         with open(results_file, 'w') as f:
             json.dump(results, f, indent=2, default=str)
         

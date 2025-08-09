@@ -88,7 +88,7 @@ class IngestionOrchestrator:
             logger.error(f"DiscordChatExporter ingestion failed: {str(e)}")
             raise
     
-    def ingest_from_api(
+    async def ingest_from_api(
         self,
         discord_token: str,
         server_id: int,
