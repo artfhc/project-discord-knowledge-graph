@@ -9,6 +9,11 @@ claude.md
 # Export
 exports/
 
+# Discord credentials (NEVER commit these!)
+config/discord_token
+config/channels.txt
+*.token
+
 # C extensions
 *.so
 
