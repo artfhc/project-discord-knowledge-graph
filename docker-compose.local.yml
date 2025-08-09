@@ -1,0 +1,20 @@
+services:
+  # Python environment for processing
+  pipeline-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: discord-kg-processor
+    volumes:
+      - ./exports:/app/exports
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./examples:/app/examples
+    working_dir: /app
+    command: tail -f /dev/null  # Keep running
+    networks:
+      - discord-local
+
+networks:
+  discord-local:
+    driver: bridge

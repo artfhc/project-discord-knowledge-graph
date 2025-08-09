@@ -1,0 +1,7 @@
+# Discord Channels Configuration
+# Format: CHANNEL_ID,CHANNEL_NAME
+# Replace with your actual channel IDs
+
+# Example (replace with real channel IDs):
+1096103065129586759,new-symphony-alerts
+1026653175027085342,portfolio-showcase

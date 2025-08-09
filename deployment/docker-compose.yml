@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  discord-exporter:
+    image: tyrrrz/discordchatexporter:stable
+    container_name: discord-kg-exporter
+    volumes:
+      - ./exports:/app/exports
+      - ./config:/app/config:ro
+      - ./scripts:/app/scripts:ro
+    environment:
+      - DISCORD_TOKEN_FILE=/app/config/discord_token
+    working_dir: /app
+    command: tail -f /dev/null  # Keep container running
+    restart: unless-stopped
+    networks:
+      - discord-kg-network
+
+  storage-uploader:
+    build:
+      context: .
+      dockerfile: Dockerfile.uploader
+    container_name: discord-kg-uploader
+    volumes:
+      - ./exports:/app/exports:ro
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-service-account.json
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_BUCKET=${GOOGLE_CLOUD_BUCKET}
+    depends_on:
+      - discord-exporter
+    restart: unless-stopped
+    networks:
+      - discord-kg-network
+
+networks:
+  discord-kg-network:
+    driver: bridge

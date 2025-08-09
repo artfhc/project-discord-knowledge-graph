@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Cloud SDK
+RUN curl https://sdk.cloud.google.com | bash
+ENV PATH="/root/google-cloud-sdk/bin:${PATH}"
+
+# Install Python dependencies
+COPY requirements-uploader.txt /tmp/
+RUN pip install -r /tmp/requirements-uploader.txt
+
+# Create app directory
+WORKDIR /app
+
+# Copy uploader scripts
+COPY scripts/uploader.py /app/
+COPY scripts/export_scheduler.py /app/
+
+# Create directories
+RUN mkdir -p /app/exports /app/logs /app/config
+
+CMD ["python", "export_scheduler.py"]
