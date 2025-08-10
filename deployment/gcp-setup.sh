@@ -2,19 +2,38 @@
 # Google Cloud VM Setup Script for Discord Knowledge Graph Pipeline
 set -e
 
-# Get Discord token from parameter or prompt
-DISCORD_TOKEN="${1}"
+# Configuration
+PROJECT_ID="discord-knowledge-graph"
+SECRET_NAME="discord-token"
 
-if [ -z "$DISCORD_TOKEN" ]; then
-    echo "⚠️  No Discord token provided"
+# Get Discord token from Google Secret Manager
+echo "🔐 Retrieving Discord token from Secret Manager..."
+DISCORD_TOKEN=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null)
+
+if [ -z "$DISCORD_TOKEN" ] || [ "$DISCORD_TOKEN" = "" ]; then
+    echo "❌ Failed to retrieve Discord token from Secret Manager"
+    echo "Make sure you have:"
+    echo "1. Run ./deployment/setup-secrets.sh to create the secret"
+    echo "2. Authenticated with Google Cloud: gcloud auth login"
+    echo "3. Set the correct project: gcloud config set project $PROJECT_ID"
+    echo ""
+    echo "Fallback: You can also pass the token as parameter:"
     echo "Usage: $0 DISCORD_TOKEN"
-    echo "Or run without token and configure manually later"
-    read -p "Continue without token? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    
+    # Fallback to parameter if Secret Manager fails
+    DISCORD_TOKEN="${1}"
+    if [ -z "$DISCORD_TOKEN" ]; then
+        read -p "Continue without token and configure manually later? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+        DISCORD_TOKEN="your_discord_token_here"
+    else
+        echo "✅ Using token from parameter"
     fi
-    DISCORD_TOKEN="your_discord_token_here"
+else
+    echo "✅ Successfully retrieved Discord token from Secret Manager"
 fi
 
 echo "🚀 Setting up Discord Knowledge Graph VM on Google Cloud..."
@@ -163,11 +182,12 @@ echo "✅ VM setup complete!"
 echo ""
 echo "🔧 Manual Configuration Required:"
 echo "1. Log out and back in to apply Docker group membership: logout"
-echo "2. Configure your Discord token: nano ~/discord-kg/config/.env"
-echo "3. Copy and edit channels: cp ~/discord-kg/config/channels.txt.example ~/discord-kg/config/channels.txt"
-echo "4. Edit with real channel IDs: nano ~/discord-kg/config/channels.txt"
-echo "5. Set up Google Cloud authentication: gcloud auth login"
-echo "6. Run GCS setup: ~/discord-kg/repo/deployment/config/gcs-setup.sh"
+echo "2. Copy and edit channels: cp ~/discord-kg/config/channels.txt.example ~/discord-kg/config/channels.txt"
+echo "3. Edit with real channel IDs: nano ~/discord-kg/config/channels.txt"
+echo "4. Set up Google Cloud authentication (if not done): gcloud auth login"
+echo "5. Run GCS setup: ~/discord-kg/repo/deployment/config/gcs-setup.sh"
+echo ""
+echo "✅ Discord token automatically configured from Secret Manager"
 echo ""
 echo "🚀 Start the Pipeline:"
 echo "  cd ~/discord-kg && docker-compose up -d"
@@ -185,6 +205,6 @@ echo "  sudo systemctl enable discord-kg"
 echo "  sudo systemctl start discord-kg"
 echo ""
 echo "Configuration files:"
-echo "  - Discord token: ~/discord-kg/config/.env"
-echo "  - Channel list: ~/discord-kg/config/channels.txt"
+echo "  - Environment config: ~/discord-kg/config/.env (Discord token configured automatically)"
+echo "  - Channel list: ~/discord-kg/config/channels.txt (edit with your channel IDs)"
 echo "  - Docker Compose: ~/discord-kg/docker-compose.yml"
