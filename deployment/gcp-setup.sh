@@ -6,34 +6,59 @@ set -e
 PROJECT_ID="discord-knowledge-graph"
 SECRET_NAME="discord-token"
 
-# Get Discord token from Google Secret Manager
-echo "🔐 Retrieving Discord token from Secret Manager..."
-DISCORD_TOKEN=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null)
+# Try to get Discord token from Google Secret Manager
+echo "🔐 Attempting to retrieve Discord token from Secret Manager..."
 
-if [ -z "$DISCORD_TOKEN" ] || [ "$DISCORD_TOKEN" = "" ]; then
-    echo "❌ Failed to retrieve Discord token from Secret Manager"
-    echo "Make sure you have:"
-    echo "1. Run ./deployment/setup-secrets.sh to create the secret"
-    echo "2. Authenticated with Google Cloud: gcloud auth login"
-    echo "3. Set the correct project: gcloud config set project $PROJECT_ID"
-    echo ""
-    echo "Fallback: You can also pass the token as parameter:"
-    echo "Usage: $0 DISCORD_TOKEN"
-    
-    # Fallback to parameter if Secret Manager fails
-    DISCORD_TOKEN="${1}"
-    if [ -z "$DISCORD_TOKEN" ]; then
-        read -p "Continue without token and configure manually later? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-        DISCORD_TOKEN="your_discord_token_here"
-    else
-        echo "✅ Using token from parameter"
-    fi
-else
+# Check if we can access Secret Manager
+if gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    DISCORD_TOKEN=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null)
     echo "✅ Successfully retrieved Discord token from Secret Manager"
+else
+    echo "⚠️  Cannot access Secret Manager from this VM"
+    echo "This is likely due to insufficient VM authentication scopes."
+    echo ""
+    echo "Solutions:"
+    echo "1. Recreate VM with cloud-platform scope (recommended)"
+    echo "2. Use gcloud auth login and try again"
+    echo "3. Pass token as parameter: $0 YOUR_DISCORD_TOKEN"
+    echo ""
+    
+    # Try user authentication as fallback
+    echo "Attempting user authentication..."
+    if command -v gcloud >/dev/null 2>&1; then
+        echo "Please authenticate with your user account:"
+        gcloud auth login --no-launch-browser
+        
+        # Retry with user auth
+        if gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            DISCORD_TOKEN=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>/dev/null)
+            echo "✅ Retrieved token using user authentication"
+        fi
+    fi
+    
+    # Final fallback to parameter or manual input
+    if [ -z "$DISCORD_TOKEN" ] || [ "$DISCORD_TOKEN" = "" ]; then
+        echo "❌ Could not retrieve token from Secret Manager"
+        DISCORD_TOKEN="${1}"
+        
+        if [ -z "$DISCORD_TOKEN" ]; then
+            echo ""
+            echo "Please provide your Discord token:"
+            echo "1. As parameter: $0 YOUR_DISCORD_TOKEN"
+            echo "2. Enter manually (secure input):"
+            read -s -p "Discord Token: " DISCORD_TOKEN
+            echo ""
+            
+            if [ -z "$DISCORD_TOKEN" ]; then
+                echo "⚠️  No token provided - using placeholder"
+                DISCORD_TOKEN="your_discord_token_here"
+            else
+                echo "✅ Token provided manually"
+            fi
+        else
+            echo "✅ Using token from parameter"
+        fi
+    fi
 fi
 
 echo "🚀 Setting up Discord Knowledge Graph VM on Google Cloud..."
@@ -63,6 +88,8 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plu
 # Add user to docker group
 sudo usermod -aG docker $USER
 
+# Apply new group membership without logout
+newgrp docker << EONG
 # Install Python packages for the pipeline
 echo "🐍 Installing Python packages..."
 pip3 install --user google-cloud-storage discord.py python-dotenv requests
@@ -208,3 +235,5 @@ echo "Configuration files:"
 echo "  - Environment config: ~/discord-kg/config/.env (Discord token configured automatically)"
 echo "  - Channel list: ~/discord-kg/config/channels.txt (edit with your channel IDs)"
 echo "  - Docker Compose: ~/discord-kg/docker-compose.yml"
+
+EONG
