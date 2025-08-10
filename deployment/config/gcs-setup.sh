@@ -2,7 +2,7 @@
 # Google Cloud Storage setup script
 set -e
 
-PROJECT_ID="your-gcp-project-id"
+PROJECT_ID="discord-knowledge-graph"
 BUCKET_NAME="discord-kg-exports"
 SERVICE_ACCOUNT_NAME="discord-kg-sa"
 SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
