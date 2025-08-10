@@ -75,13 +75,8 @@ def run_health_check():
     )
     logger.info(f"Disk usage: {disk_usage.stdout}")
     
-    # Check Docker containers
-    docker_ps = subprocess.run(
-        ['docker', 'ps'],
-        capture_output=True,
-        text=True
-    )
-    logger.info(f"Docker containers: {docker_ps.stdout}")
+    # Docker health check removed - not available inside container
+    logger.info("Health check complete - container is running")
 
 def main():
     """Main scheduler function"""

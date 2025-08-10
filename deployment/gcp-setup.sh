@@ -162,8 +162,8 @@ EXPORT_FORMAT=json
 EXPORT_PATH=/home/$USER/discord-kg/exports
 LOG_PATH=/home/$USER/discord-kg/logs
 
-# Schedule Configuration (cron format)
-EXPORT_SCHEDULE="0 2 * * *"  # Daily at 2 AM
+# Schedule Configuration (HH:MM format for Python schedule library)
+EXPORT_SCHEDULE="02:00"  # Daily at 2 AM
 EOF
 
 # Create example channels configuration
@@ -194,8 +194,8 @@ Requires=docker.service
 Type=forking
 RemainAfterExit=yes
 WorkingDirectory=/home/$USER/discord-kg
-ExecStart=/usr/bin/docker-compose up -d
-ExecStop=/usr/bin/docker-compose down
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
 TimeoutStartSec=0
 Restart=on-failure
 StartLimitBurst=3
@@ -217,15 +217,15 @@ echo ""
 echo "✅ Discord token automatically configured from Secret Manager"
 echo ""
 echo "🚀 Start the Pipeline:"
-echo "  cd ~/discord-kg && docker-compose up -d"
+echo "  cd ~/discord-kg && docker compose up -d"
 echo ""
 echo "🔍 Monitor:"
-echo "  docker-compose logs -f                    # View all logs"
-echo "  docker-compose logs -f storage-uploader  # View uploader logs"
+echo "  docker compose logs -f                    # View all logs"
+echo "  docker compose logs -f storage-uploader  # View uploader logs"
 echo "  ls -la exports/                          # Check exported files"
 echo ""
 echo "🛑 Stop:"
-echo "  docker-compose down"
+echo "  docker compose down"
 echo ""
 echo "🔧 Enable auto-start (optional):"
 echo "  sudo systemctl enable discord-kg"
