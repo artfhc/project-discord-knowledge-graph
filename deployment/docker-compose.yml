@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile.uploader
     container_name: discord-kg-uploader
     volumes:
-      - ./exports:/app/exports:ro
+      - ./exports:/app/exports
       - ./config:/app/config:ro
       - ./logs:/app/logs
     environment:
