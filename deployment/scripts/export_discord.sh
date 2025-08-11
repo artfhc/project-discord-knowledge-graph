@@ -8,7 +8,6 @@ source /app/config/.env
 # Configuration
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 EXPORT_DIR="/app/exports/$TIMESTAMP"
-TOKEN_FILE="/app/config/discord_token"
 
 # Create export directory
 mkdir -p "$EXPORT_DIR"
@@ -25,7 +24,7 @@ export_channel() {
         -v "$(pwd)/config:/app/config:ro" \
         tyrrrz/discordchatexporter:stable \
         export \
-        -t "$(cat $TOKEN_FILE)" \
+        -t "$DISCORD_TOKEN" \
         -c "$CHANNEL_ID" \
         -f "Json" \
         -o "/app/exports/$TIMESTAMP/${CHANNEL_NAME}_${CHANNEL_ID}.json" \
