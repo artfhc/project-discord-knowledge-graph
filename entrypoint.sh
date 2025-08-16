@@ -39,7 +39,7 @@ echo "--- End of rclone config ---"
 
 # Test rclone config
 echo "Testing rclone config:"
-rclone config show
+rclone config show --config /root/.config/rclone/rclone.conf
 
 if [ "$SCOPE" = "guild" ]; then
   echo "=== Exporting entire guild ==="
@@ -72,7 +72,7 @@ date -u +"%Y-%m-%dT%H:%M:%SZ" > /work/exports/_run_completed_at.txt
 
 echo "=== Syncing to archive ==="
 echo "Running: rclone sync /work/exports $ARCHIVE_URI"
-rclone sync /work/exports "$ARCHIVE_URI" --fast-list --checkers=8 --transfers=8
+rclone sync /work/exports "$ARCHIVE_URI" --config /root/.config/rclone/rclone.conf --fast-list --checkers=8 --transfers=8
 
 echo "=== Discord Chat Exporter Completed Successfully ==="
 echo "Completion timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
