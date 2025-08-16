@@ -6,6 +6,12 @@ __pycache__/
 # Claude
 claude.md
 
+# Mac
+.DS_Store
+
+# Data
+data/
+
 # C extensions
 *.so
 
