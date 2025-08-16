@@ -8,24 +8,93 @@ This project ingests messages from Discord servers, processes and classifies the
 
 ## 🏗️ Architecture
 
-The system follows a 3-layer pipeline architecture:
-
-### 1. Ingestion Layer
-- **Purpose**: Periodically fetch historical messages from Discord servers
-- **Technology**: DiscordChatExporter.Cli via Docker + GitHub Actions
-- **Schedule**: Daily automated exports via cron
-- **Output**: JSON message dumps stored in cloud storage (B2)
+The system follows a 4-layer pipeline architecture:
 
 ### 2. Preprocessing Layer
-- **Purpose**: Clean, enrich, and classify messages for analysis
-- **Classification**: Messages categorized as `question`, `answer`, `alert`, `strategy`
-- **Method**: LLM-based classification with few-shot prompting
-- **Output**: Preprocessed message objects with metadata
+
+- **Purpose**: Clean, enrich, segment, and classify messages to prepare for extraction and graph construction.
+
+- **Detailed Steps**:
+
+  1. **Preservation**:
+
+     - Retain original message content, including markdown, emojis, mentions, attachments, and system metadata.
+     - Preserve all fields from raw Discord JSON including `thread`, `roles`, and `channel`.
+
+  2. **Normalization**:
+
+     - Convert text to lowercase.
+     - Normalize whitespace (trim excessive line breaks or spacing).
+     - Convert timestamps to ISO 8601 format with timezone (UTC).
+     - Flatten nested structures such as `mentions` or `roles` (e.g., store as arrays of names or IDs).
+
+  3. **Segmentation**:
+
+     - Group messages based on Discord thread IDs if available.
+     - If not, infer segments using heuristics:
+       - Same channel
+       - Same author or reply thread
+       - Less than 5 minutes apart
+     - Each group is tagged with a synthetic `segment_id`
+
+  4. **Classification**:
+
+     - Use LLM-based zero-shot or few-shot classification to tag each message with:
+       - `question`, `answer`, `alert`, or `strategy`
+     - Store classification metadata with confidence score
+
+- **Storage Strategy**:
+
+  - **Primary**: Store structured `.jsonl` in cloud storage at: `b2://mybucket/preprocessed/YYYYMMDD_HHMM/preprocessed.jsonl`
+  - **Optional**: Insert rows into a relational DB table `preprocessed_messages`
+    - Indexed by: `segment_id`, `message_id`, `timestamp`, `author`, `type`
+    - Use for audit, sampling, UI search, or graph debugging
+
+- **Example Output**:
+
+```json
+{
+  "message_id": "1322296749183860786",
+  "segment_id": "thread-Mega-backdoor-Roth-01",
+  "thread": "Mega back door Roth",
+  "channel": "#tax-discussion",
+  "author": "daveydaveydavedave",
+  "timestamp": "2024-12-27T12:15:12-08:00",
+  "type": "answer",
+  "confidence": 0.88,
+  "content": "Right. So if they’ll do the automatic conversion then it’s nothing to worry about...",
+  "clean_text": "right. so if they’ll do the automatic conversion then it’s nothing to worry about..."
+}
+```
 
 ### 3. Entity & Relation Extraction Layer
+
 - **Purpose**: Convert messages into structured knowledge triples
 - **Granularity**: Per-message extraction
 - **Output Format**: JSON triples like `[["user123", "recommends", "BTC breakout"], ["BTC", "has_sentiment", "bullish"]]`
+
+### 4. Query & LLM Integration Layer
+
+- **Purpose**: Use the knowledge graph as structured context for answering natural language questions or generating insights
+- **Functionality**:
+  - Query the graph for relevant entities, relationships, or subgraphs
+  - Use the results to ground LLM-generated answers
+  - Construct prompts like:
+    ```
+    Based on the knowledge graph:
+    - Arthur recommends a BTC breakout
+    - BTC has bullish sentiment
+    → What is Arthur’s outlook on BTC?
+    ```
+- **Tools**:
+  - LangChain's `Neo4jGraph` or `GraphQAChain`
+  - Optional: custom Streamlit or CLI-based query interface
+- **Input**: Natural language question
+- **Output**: LLM-generated, graph-grounded answer
+- **Advanced Features**:
+  - Subgraph summarization
+  - Sentiment/time-based filters
+  - Alerts or notifications on graph change events
 
 ## 🚀 Current Implementation Status
 
