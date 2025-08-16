@@ -1,0 +1,31 @@
+name: Discord Chat Export
+on:
+  schedule:
+    - cron: "0 9 * * *"   # runs every day at 09:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t dce-job:latest .
+
+      - name: Run Discord Export
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          GUILD_ID: ${{ secrets.GUILD_ID }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}         # if using "channel" mode
+          SCOPE: guild                                  # or "channel"
+          AFTER_TS: ${{ secrets.AFTER_TS }}             # optional; ISO format
+          ARCHIVE_URI: ${{ secrets.ARCHIVE_URI }}       # e.g. b2:mybucket/discord-archive
+          EXPORT_FORMAT: Json
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}   # full rclone.conf contents
+        run: |
+          docker run --rm \
+            -e DISCORD_TOKEN -e GUILD_ID -e CHANNEL_ID -e SCOPE \
+            -e AFTER_TS -e ARCHIVE_URI -e EXPORT_FORMAT -e RCLONE_CONFIG \
+            dce-job:latest
