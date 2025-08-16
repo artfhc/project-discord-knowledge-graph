@@ -9,14 +9,17 @@ echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 : "${ARCHIVE_URI:?missing}"
 : "${SCOPE:=guild}"
 : "${CHANNEL_ID:=}"
-: "${AFTER_TS:=1970-01-01}"
+# Handle AFTER_TS - if empty or not set, use a date far in the past
+if [ -z "${AFTER_TS:-}" ]; then
+  AFTER_TS="1970-01-01"
+fi
 : "${EXPORT_FORMAT:=Json}"
 
 echo "=== Configuration ==="
 echo "GUILD_ID: $GUILD_ID"
 echo "SCOPE: $SCOPE"
 echo "CHANNEL_ID: ${CHANNEL_ID:-"(not set)"}"
-echo "AFTER_TS: $AFTER_TS"
+echo "AFTER_TS: $AFTER_TS (processed)"
 echo "EXPORT_FORMAT: $EXPORT_FORMAT"
 echo "ARCHIVE_URI: $ARCHIVE_URI"
 echo "DISCORD_TOKEN: ${DISCORD_TOKEN:0:10}..." # Only show first 10 chars for security
