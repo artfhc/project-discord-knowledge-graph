@@ -23,8 +23,23 @@ echo "DISCORD_TOKEN: ${DISCORD_TOKEN:0:10}..." # Only show first 10 chars for se
 
 echo "=== Setting up directories and rclone ==="
 mkdir -p /work/exports /work/state /root/.config/rclone
-echo "$RCLONE_CONFIG" > /root/.config/rclone/rclone.conf
+
+# Check if RCLONE_CONFIG is set
+if [ -z "${RCLONE_CONFIG:-}" ]; then
+  echo "ERROR: RCLONE_CONFIG environment variable is not set"
+  exit 1
+fi
+
+# Write rclone config, ensuring proper line endings
+printf "%s\n" "$RCLONE_CONFIG" > /root/.config/rclone/rclone.conf
 echo "Created rclone config and work directories"
+echo "Rclone config file contents:"
+cat /root/.config/rclone/rclone.conf
+echo "--- End of rclone config ---"
+
+# Test rclone config
+echo "Testing rclone config:"
+rclone config show
 
 if [ "$SCOPE" = "guild" ]; then
   echo "=== Exporting entire guild ==="
