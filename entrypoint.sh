@@ -9,7 +9,7 @@ set -euo pipefail
 : "${AFTER_TS:=1970-01-01}"
 : "${EXPORT_FORMAT:=Json}"
 
-mkdir -p /work/exports /work/state
+mkdir -p /work/exports /work/state /root/.config/rclone
 echo "$RCLONE_CONFIG" > /root/.config/rclone/rclone.conf
 
 if [ "$SCOPE" = "guild" ]; then

@@ -4,8 +4,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y curl unzip ca-certificates && \
     curl -L https://github.com/Tyrrrz/DiscordChatExporter/releases/latest/download/DiscordChatExporter.Cli.linux-x64.zip -o dce.zip && \
     unzip dce.zip && \
-    mv DiscordChatExporter.Cli /app/DiscordChatExporter.Cli && \
-    chmod +x /app/DiscordChatExporter.Cli && \
+    chmod +x DiscordChatExporter.Cli && \
     rm dce.zip && \
     curl -L https://downloads.rclone.org/rclone-current-linux-amd64.zip -o rclone.zip && \
     unzip rclone.zip && mv rclone-*-linux-amd64/rclone /usr/local/bin/ && rm -rf rclone*
