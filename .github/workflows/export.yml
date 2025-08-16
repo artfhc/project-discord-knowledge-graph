@@ -19,7 +19,7 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           GUILD_ID: ${{ secrets.GUILD_ID }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}         # if using "channel" mode
-          SCOPE: guild                                  # or "channel"
+          SCOPE: ${{ secrets.SCOPE }}                  # "guild" or "channel"
           AFTER_TS: ${{ secrets.AFTER_TS }}             # optional; ISO format
           ARCHIVE_URI: ${{ secrets.ARCHIVE_URI }}       # e.g. b2:mybucket/discord-archive
           EXPORT_FORMAT: Json
