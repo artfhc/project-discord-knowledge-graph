@@ -57,7 +57,9 @@ if [ "$SCOPE" = "guild" ]; then
 else
   : "${CHANNEL_ID:?missing}"
   echo "=== Exporting specific channel ==="
-  echo "Running: DiscordChatExporter.Cli export --channel $CHANNEL_ID --format $EXPORT_FORMAT --after $AFTER_TS"
+  echo "Command structure: DiscordChatExporter.Cli export --token [HIDDEN] --channel [${#CHANNEL_ID} chars] --format $EXPORT_FORMAT --after $AFTER_TS --output /work/exports --utc"
+  echo "Token length: ${#DISCORD_TOKEN} characters"
+  echo "Channel ID length: ${#CHANNEL_ID} characters"
   /app/DiscordChatExporter.Cli export \
     --token "$DISCORD_TOKEN" \
     --channel "$CHANNEL_ID" \
