@@ -74,8 +74,11 @@ ls -la /work/exports/
 date -u +"%Y-%m-%dT%H:%M:%SZ" > /work/exports/_run_completed_at.txt
 
 echo "=== Syncing to archive ==="
-echo "Running: rclone sync /work/exports $ARCHIVE_URI"
-rclone sync /work/exports "$ARCHIVE_URI" --config /root/.config/rclone/rclone.conf --fast-list --checkers=8 --transfers=8
+# Create timestamp folder path
+TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+TIMESTAMPED_URI="${ARCHIVE_URI}/${TIMESTAMP}"
+echo "Running: rclone sync /work/exports $TIMESTAMPED_URI"
+rclone sync /work/exports "$TIMESTAMPED_URI" --config /root/.config/rclone/rclone.conf --fast-list --checkers=8 --transfers=8
 
 echo "=== Discord Chat Exporter Completed Successfully ==="
 echo "Completion timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
