@@ -46,25 +46,23 @@ rclone config show --config /root/.config/rclone/rclone.conf
 
 if [ "$SCOPE" = "guild" ]; then
   echo "=== Exporting entire guild ==="
-  echo "Running: DiscordChatExporter.Cli exportguild --guild $GUILD_ID --format $EXPORT_FORMAT --after $AFTER_TS"
+  echo "Running: DiscordChatExporter.Cli exportguild --guild $GUILD_ID --format $EXPORT_FORMAT"
   /app/DiscordChatExporter.Cli exportguild \
     --token "$DISCORD_TOKEN" \
     --guild "$GUILD_ID" \
     --format "$EXPORT_FORMAT" \
-    --after "$AFTER_TS" \
     --output /work/exports \
     --utc
 else
   : "${CHANNEL_ID:?missing}"
   echo "=== Exporting specific channel ==="
-  echo "Command structure: DiscordChatExporter.Cli export --token [HIDDEN] --channel [${#CHANNEL_ID} chars] --format $EXPORT_FORMAT --after $AFTER_TS --output /work/exports --utc"
+  echo "Command structure: DiscordChatExporter.Cli export --token [HIDDEN] --channel [${#CHANNEL_ID} chars] --format $EXPORT_FORMAT --output /work/exports --utc"
   echo "Token length: ${#DISCORD_TOKEN} characters"
   echo "Channel ID length: ${#CHANNEL_ID} characters"
   /app/DiscordChatExporter.Cli export \
     --token "$DISCORD_TOKEN" \
     --channel "$CHANNEL_ID" \
     --format "$EXPORT_FORMAT" \
-    --after "$AFTER_TS" \
     --output /work/exports \
     --utc
 fi
