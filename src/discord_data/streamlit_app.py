@@ -99,22 +99,68 @@ def main():
         st.warning("No embed data found in the Discord export.")
         st.stop()
     
-    # Sidebar filters
+    # Sidebar filters and pagination
     st.sidebar.header("🔍 Filters")
     
-    # Author filter
-    authors = embeds_df['author_name'].unique()
-    selected_authors = st.sidebar.multiselect(
-        "Select Authors",
-        authors,
-        default=authors
+    # Name filter (search in strategy titles)
+    name_filter = st.sidebar.text_input(
+        "🔍 Search Strategy Names",
+        placeholder="Type to search strategy titles...",
+        help="Filter strategies by name/title"
     )
     
+    # Field Author filter (if it exists)
+    if 'field_author' in embeds_df.columns:
+        field_authors = embeds_df['field_author'].dropna().unique()
+        if len(field_authors) > 0:
+            # Add "All Authors" option at the beginning
+            field_authors_options = ["All Authors"] + sorted(field_authors.tolist())
+            selected_field_author = st.sidebar.selectbox(
+                "Strategy Author",
+                field_authors_options,
+                index=0  # Default to "All Authors"
+            )
+            
+            # Convert selection to list for filtering logic
+            if selected_field_author == "All Authors":
+                selected_field_authors = field_authors.tolist()
+            else:
+                selected_field_authors = [selected_field_author]
+        else:
+            selected_field_authors = []
+    else:
+        selected_field_authors = []
+    
+    st.sidebar.header("📄 Table Options")
+    
+    # Pagination options in sidebar
+    show_urls = st.sidebar.checkbox("Show URLs", value=True)
+    page_size = st.sidebar.selectbox("Rows per page", [10, 25, 50, 100], index=1)
+    sort_by = st.sidebar.selectbox("Sort by", ['timestamp', 'author_name', 'total_reactions'], index=0)
+    
+    # Initialize page number if not exists
+    if 'page_num' not in st.session_state:
+        st.session_state.page_num = 1
+    
+    # Apply filters sequentially
+    filtered_df = embeds_df.copy()
+    
+    # Apply name filter first
+    if name_filter.strip():
+        if 'embed_title' in filtered_df.columns:
+            filtered_df = filtered_df[
+                filtered_df['embed_title'].str.contains(name_filter, case=False, na=False)
+            ]
+    
+    # Apply field_author filter
+    if 'field_author' in filtered_df.columns and selected_field_authors:
+        filtered_df = filtered_df[filtered_df['field_author'].isin(selected_field_authors)]
+    
     # Date range filter (only if timestamps were successfully parsed)
-    if 'timestamp' in embeds_df.columns and 'date' in embeds_df.columns and embeds_df['timestamp'].notna().any():
+    if 'timestamp' in filtered_df.columns and 'date' in filtered_df.columns and filtered_df['timestamp'].notna().any():
         try:
-            min_date = embeds_df['timestamp'].min().date()
-            max_date = embeds_df['timestamp'].max().date()
+            min_date = filtered_df['timestamp'].min().date()
+            max_date = filtered_df['timestamp'].max().date()
             
             date_range = st.sidebar.date_input(
                 "Date Range",
@@ -125,18 +171,13 @@ def main():
             
             if len(date_range) == 2:
                 start_date, end_date = date_range
-                filtered_df = embeds_df[
-                    (embeds_df['author_name'].isin(selected_authors)) &
-                    (embeds_df['date'] >= start_date) &
-                    (embeds_df['date'] <= end_date)
+                filtered_df = filtered_df[
+                    (filtered_df['date'] >= start_date) &
+                    (filtered_df['date'] <= end_date)
                 ]
-            else:
-                filtered_df = embeds_df[embeds_df['author_name'].isin(selected_authors)]
         except Exception:
-            # Fall back to author filter only if date filtering fails
-            filtered_df = embeds_df[embeds_df['author_name'].isin(selected_authors)]
-    else:
-        filtered_df = embeds_df[embeds_df['author_name'].isin(selected_authors)]
+            # Keep current filtered_df if date filtering fails
+            pass
     
     # Main content
     col1, col2, col3, col4 = st.columns(4)
@@ -144,7 +185,10 @@ def main():
     with col1:
         st.metric("Total Embeds", len(filtered_df))
     with col2:
-        st.metric("Unique Authors", filtered_df['author_name'].nunique())
+        if 'field_author' in filtered_df.columns:
+            st.metric("Unique Strategy Authors", filtered_df['field_author'].nunique())
+        else:
+            st.metric("Unique Authors", filtered_df['author_name'].nunique())
     with col3:
         st.metric("Bot Messages", filtered_df['author_is_bot'].sum())
     with col4:
@@ -156,15 +200,8 @@ def main():
     with tab1:
         st.subheader("Embed Data Table")
         
-        # Display options
-        col1, col2 = st.columns(2)
-        with col1:
-            show_urls = st.checkbox("Show URLs", value=False)
-        with col2:
-            page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=1)
-        
         # Select columns to display
-        display_columns = ['timestamp', 'author_name', 'embed_title', 'embed_description']
+        display_columns = ['timestamp', 'embed_title']
         if show_urls:
             display_columns.append('embed_url')
         
@@ -178,23 +215,107 @@ def main():
         # Filter columns that exist in the dataframe
         available_columns = [col for col in display_columns if col in filtered_df.columns]
         
+        # Sort the dataframe
+        if sort_by in filtered_df.columns:
+            sorted_df = filtered_df.sort_values(sort_by, ascending=False)
+        else:
+            sorted_df = filtered_df
+        
+        # Pagination logic
+        total_rows = len(sorted_df)
+        total_pages = (total_rows + page_size - 1) // page_size  # Ceiling division
+        
+        # Add pagination navigation to sidebar if multiple pages
+        if total_pages > 1:
+            st.sidebar.header("📖 Navigation")
+            
+            # Page navigation buttons in sidebar
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                if st.button("⬅️ First", key="first_btn"):
+                    st.session_state.page_num = 1
+                    st.rerun()
+                if st.button("◀️ Prev", key="prev_btn"):
+                    st.session_state.page_num = max(1, st.session_state.page_num - 1)
+                    st.rerun()
+            
+            with col2:
+                if st.button("▶️ Next", key="next_btn"):
+                    st.session_state.page_num = min(total_pages, st.session_state.page_num + 1)
+                    st.rerun()
+                if st.button("➡️ Last", key="last_btn"):
+                    st.session_state.page_num = total_pages
+                    st.rerun()
+            
+            # Page number input in sidebar
+            page_num = st.sidebar.number_input(
+                f"Page (1-{total_pages})",
+                min_value=1,
+                max_value=total_pages,
+                value=st.session_state.page_num,
+                key="sidebar_page_input"
+            )
+            if page_num != st.session_state.page_num:
+                st.session_state.page_num = page_num
+                st.rerun()
+            
+            st.sidebar.caption(f"Total: {total_pages} pages")
+            
+            # Display current page info
+            start_idx = (st.session_state.page_num - 1) * page_size
+            end_idx = min(start_idx + page_size, total_rows)
+            st.caption(f"Showing rows {start_idx + 1}-{end_idx} of {total_rows}")
+            
+            # Get current page data
+            current_page_df = sorted_df.iloc[start_idx:end_idx]
+        else:
+            # If only one page, show all data
+            st.session_state.page_num = 1
+            current_page_df = sorted_df
+            st.caption(f"Showing all {total_rows} rows")
+        
+        # Prepare display dataframe with clickable links
+        display_df = current_page_df[available_columns].copy()
+        
+        # Display the table
         st.dataframe(
-            filtered_df[available_columns].head(page_size),
+            display_df,
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            column_config={
+                "embed_url": st.column_config.LinkColumn(
+                    "Strategy Link",
+                    help="Click to open strategy on Composer",
+                    display_text="Open Strategy"
+                ) if show_urls and 'embed_url' in display_df.columns else None,
+                "embed_title": st.column_config.TextColumn("Title", width="large"),
+                "field_author": st.column_config.TextColumn("Strategy Author", width="medium"),
+                "timestamp": st.column_config.DatetimeColumn("Date", width="medium"),
+                "total_reactions": st.column_config.NumberColumn("Reactions", width="small")
+            }
         )
     
     with tab2:
         st.subheader("📈 Analytics Dashboard")
         
         if not filtered_df.empty:
-            # Posts by author
-            fig1 = px.bar(
-                filtered_df['author_name'].value_counts().head(10),
-                title="Top 10 Authors by Embed Count",
-                labels={'index': 'Author', 'value': 'Embed Count'}
-            )
-            st.plotly_chart(fig1, use_container_width=True)
+            # Posts by strategy author
+            if 'field_author' in filtered_df.columns:
+                field_author_counts = filtered_df['field_author'].value_counts().head(10)
+                fig1 = px.bar(
+                    field_author_counts,
+                    title="Top 10 Strategy Authors by Embed Count",
+                    labels={'index': 'Strategy Author', 'value': 'Embed Count'}
+                )
+                st.plotly_chart(fig1, use_container_width=True)
+            else:
+                # Fallback to regular author if field_author doesn't exist
+                fig1 = px.bar(
+                    filtered_df['author_name'].value_counts().head(10),
+                    title="Top 10 Authors by Embed Count",
+                    labels={'index': 'Author', 'value': 'Embed Count'}
+                )
+                st.plotly_chart(fig1, use_container_width=True)
             
             # Posts over time
             if 'date' in filtered_df.columns:
@@ -249,10 +370,29 @@ def main():
             available_strategy_columns = [col for col in strategy_columns if col in url_embeds.columns]
             
             st.subheader("Strategy Details")
+            
+            # Prepare strategy table with clickable links
+            strategy_display_df = url_embeds.sort_values('timestamp', ascending=False).copy()
+            
+            # Select and rename columns for better display
+            strategy_columns = ['embed_title', 'field_author', 'embed_url', 'timestamp', 'total_reactions']
+            available_strategy_columns = [col for col in strategy_columns if col in strategy_display_df.columns]
+            
             st.dataframe(
-                url_embeds[available_strategy_columns].sort_values('timestamp', ascending=False),
+                strategy_display_df[available_strategy_columns],
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
+                column_config={
+                    "embed_url": st.column_config.LinkColumn(
+                        "Strategy Link",
+                        help="Click to open strategy on Composer",
+                        display_text="Open Strategy"
+                    ),
+                    "embed_title": st.column_config.TextColumn("Strategy Name", width="large"),
+                    "field_author": st.column_config.TextColumn("Creator", width="medium"),
+                    "timestamp": st.column_config.DatetimeColumn("Posted Date", width="medium"),
+                    "total_reactions": st.column_config.NumberColumn("Reactions", width="small")
+                }
             )
         else:
             st.info("No embeds with URLs found in the filtered data.")
@@ -263,11 +403,15 @@ def main():
         if 'hour' in filtered_df.columns:
             # Posts by hour
             hourly_counts = filtered_df['hour'].value_counts().sort_index()
+            hourly_df = pd.DataFrame({
+                'Hour': hourly_counts.index,
+                'Number of Embeds': hourly_counts.values
+            })
             fig5 = px.bar(
-                x=hourly_counts.index,
-                y=hourly_counts.values,
-                title="Embed Posts by Hour of Day",
-                labels={'x': 'Hour', 'y': 'Number of Embeds'}
+                hourly_df,
+                x='Hour',
+                y='Number of Embeds',
+                title="Embed Posts by Hour of Day"
             )
             st.plotly_chart(fig5, use_container_width=True)
         
@@ -276,13 +420,19 @@ def main():
         recent_embeds = filtered_df.sort_values('timestamp', ascending=False).head(10)
         
         for _, embed in recent_embeds.iterrows():
-            with st.expander(f"🕐 {embed['timestamp'].strftime('%Y-%m-%d %H:%M')} - {embed['embed_title'][:50]}..."):
-                st.write(f"**Author:** {embed['author_name']}")
+            # Handle timestamp formatting safely
+            try:
+                timestamp_str = embed['timestamp'].strftime('%Y-%m-%d %H:%M') if pd.notna(embed['timestamp']) else "Unknown date"
+            except:
+                timestamp_str = str(embed['timestamp']) if pd.notna(embed['timestamp']) else "Unknown date"
+            
+            with st.expander(f"🕐 {timestamp_str} - {embed['embed_title'][:50]}..."):
                 st.write(f"**Title:** {embed['embed_title']}")
-                st.write(f"**Description:** {embed['embed_description']}")
-                if embed['embed_url']:
-                    st.write(f"**URL:** {embed['embed_url']}")
-                if embed['total_reactions'] > 0:
+                if 'field_author' in embed and pd.notna(embed['field_author']):
+                    st.write(f"**Strategy Author:** {embed['field_author']}")
+                if embed.get('embed_url'):
+                    st.markdown(f"**URL:** [Open Strategy]({embed['embed_url']})")
+                if embed.get('total_reactions', 0) > 0:
                     st.write(f"**Reactions:** {embed['total_reactions']}")
     
     # Footer
