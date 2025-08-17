@@ -77,6 +77,28 @@ class DiscordMessageClassifier:
         
         return text
     
+    def clean_texts_batch(self, texts: List[str]) -> List[str]:
+        """Clean multiple texts using vectorized operations for better performance"""
+        if not texts:
+            return []
+        
+        # Create pandas Series for vectorized string operations
+        series = pd.Series(texts).fillna("")
+        
+        # Convert to lowercase
+        series = series.str.lower()
+        
+        # Remove excessive whitespace
+        series = series.str.replace(r'\s+', ' ', regex=True)
+        series = series.str.strip()
+        
+        # Remove Discord-specific formatting but preserve content
+        series = series.str.replace(r'<@!?\d+>', '[mention]', regex=True)  # User mentions
+        series = series.str.replace(r'<#\d+>', '[channel]', regex=True)    # Channel mentions
+        series = series.str.replace(r'<:\w+:\d+>', '[emoji]', regex=True)  # Custom emojis
+        
+        return series.tolist()
+    
     def extract_thread_name(self, message: Dict) -> Optional[str]:
         """Extract thread name from message if available"""
         if "thread" in message and message["thread"]:
@@ -108,59 +130,124 @@ class DiscordMessageClassifier:
         
         return best_label, best_score
     
+    def classify_messages_batch(self, texts: List[str]) -> List[Tuple[str, float]]:
+        """Classify multiple messages in batch for better performance"""
+        if not texts:
+            return []
+        
+        # Filter out empty texts and track indices
+        non_empty_texts = []
+        empty_indices = set()
+        
+        for i, text in enumerate(texts):
+            if text.strip():
+                non_empty_texts.append(text)
+            else:
+                empty_indices.add(i)
+        
+        # Batch classify non-empty texts
+        results = []
+        if non_empty_texts:
+            batch_results = self.classifier(non_empty_texts, self.labels)
+            # Handle single vs batch results
+            if isinstance(batch_results, list):
+                results = [(r['labels'][0], r['scores'][0]) for r in batch_results]
+            else:
+                results = [(batch_results['labels'][0], batch_results['scores'][0])]
+        
+        # Reconstruct full results with defaults for empty texts
+        final_results = []
+        result_idx = 0
+        
+        for i in range(len(texts)):
+            if i in empty_indices:
+                final_results.append(("alert", 0.5))
+            else:
+                final_results.append(results[result_idx])
+                result_idx += 1
+        
+        return final_results
+    
     def process_discord_export(self, file_path: str) -> List[ClassifiedMessage]:
-        """Process Discord export JSON and return classified messages"""
+        """Process Discord export JSON and return classified messages with batch processing"""
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         messages = data.get("messages", [])
         classified_messages = []
         
-        print(f"Processing {len(messages)} messages...")
+        print(f"Processing {len(messages)} messages in batches of {self.batch_size}...")
         
-        for message in tqdm(messages, desc="Classifying messages"):
-            # Extract basic info
-            message_id = message.get("id", "")
-            content = message.get("content", "")
-            author_info = message.get("author", {})
-            author = author_info.get("name", "unknown")
+        # Process messages in batches
+        for i in tqdm(range(0, len(messages), self.batch_size), desc="Processing batches"):
+            batch = messages[i:i + self.batch_size]
             
-            # Clean and classify
-            clean_text = self.clean_text(content)
-            if not clean_text:
-                continue  # Skip empty messages
+            # Pre-process batch: extract info and metadata
+            batch_data = []
+            batch_contents = []
             
-            msg_type, confidence = self.classify_message(clean_text)
+            for message in batch:
+                # Extract basic info
+                message_id = message.get("id", "")
+                content = message.get("content", "")
+                author_info = message.get("author", {})
+                author = author_info.get("name", "unknown")
+                
+                # Extract additional metadata
+                thread_name = self.extract_thread_name(message)
+                segment_id = self.generate_segment_id(message, thread_name)
+                
+                # Format timestamp
+                timestamp = message.get("timestamp", "")
+                if timestamp:
+                    try:
+                        # Parse and format to ISO 8601 UTC
+                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        timestamp = dt.isoformat()
+                    except:
+                        pass  # Keep original if parsing fails
+                
+                batch_data.append({
+                    'message_id': message_id,
+                    'segment_id': segment_id,
+                    'thread': thread_name,
+                    'channel': data.get("channel", {}).get("name", "unknown"),
+                    'author': author,
+                    'timestamp': timestamp,
+                    'content': content
+                })
+                batch_contents.append(content)
             
-            # Extract additional metadata
-            thread_name = self.extract_thread_name(message)
-            segment_id = self.generate_segment_id(message, thread_name)
+            # Batch clean all texts at once
+            batch_clean_texts = self.clean_texts_batch(batch_contents)
             
-            # Format timestamp
-            timestamp = message.get("timestamp", "")
-            if timestamp:
-                try:
-                    # Parse and format to ISO 8601 UTC
-                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                    timestamp = dt.isoformat()
-                except:
-                    pass  # Keep original if parsing fails
+            # Add clean texts to batch data
+            for msg_data, clean_text in zip(batch_data, batch_clean_texts):
+                msg_data['clean_text'] = clean_text
             
-            # Create classified message
-            classified_msg = ClassifiedMessage(
-                message_id=message_id,
-                segment_id=segment_id,
-                thread=thread_name,
-                channel=data.get("channel", {}).get("name", "unknown"),
-                author=author,
-                timestamp=timestamp,
-                type=msg_type,
-                confidence=confidence,
-                content=content,
-                clean_text=clean_text
-            )
+            # Batch classify all texts at once
+            classifications = self.classify_messages_batch(batch_clean_texts)
             
-            classified_messages.append(classified_msg)
+            # Create classified messages
+            for msg_data, (msg_type, confidence) in zip(batch_data, classifications):
+                # Skip empty messages
+                if not msg_data['clean_text']:
+                    continue
+                
+                classified_msg = ClassifiedMessage(
+                    message_id=msg_data['message_id'],
+                    segment_id=msg_data['segment_id'],
+                    thread=msg_data['thread'],
+                    channel=msg_data['channel'],
+                    author=msg_data['author'],
+                    timestamp=msg_data['timestamp'],
+                    type=msg_type,
+                    confidence=confidence,
+                    content=msg_data['content'],
+                    clean_text=msg_data['clean_text']
+                )
+                
+                classified_messages.append(classified_msg)
         
         return classified_messages
     
