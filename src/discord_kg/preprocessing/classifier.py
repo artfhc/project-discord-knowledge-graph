@@ -48,14 +48,18 @@ class DiscordMessageClassifier:
         )
         
         # Label mapping for Discord message types
-        self.labels = ["question", "answer", "alert", "strategy"]
+        self.labels = ["question", "answer", "alert", "strategy", "signal", "performance", "analysis", "discussion"]
         
         # Define what each label means for better classification
         self.label_descriptions = {
             "question": "asking for information, help, or clarification",
             "answer": "providing information, explanation, or response to a question", 
             "alert": "notification, warning, announcement, or urgent message",
-            "strategy": "discussion about plans, recommendations, or strategic thinking"
+            "strategy": "discussion about trading strategies, symphony creation, or strategic planning",
+            "signal": "specific trade calls, buy/sell recommendations, entry/exit points, or actionable trading advice",
+            "performance": "portfolio updates, P&L reports, backtest results, or strategy performance metrics",
+            "analysis": "market analysis, technical analysis, fundamental research, or data-driven insights",
+            "discussion": "general conversation, opinions, debates, or casual trading discussion"
         }
     
     def clean_text(self, text: str) -> str:
