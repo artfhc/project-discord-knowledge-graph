@@ -1,6 +1,6 @@
 # Discord Message Preprocessing
 
-Local implementation of the preprocessing layer using TinyBERT for message classification.
+Local implementation of the preprocessing layer using BART-MNLI for message classification.
 
 ## Features
 
@@ -65,10 +65,12 @@ The output is a JSONL file where each line contains a classified message:
 ### Files
 
 - `preprocessor.py`: Message preprocessing pipeline (preservation, normalization, segmentation)
-- `classifier.py`: TinyBERT-based message classification
+- `classifier.py`: BART-MNLI-based message classification
 - `test_local.py`: Testing script for the complete pipeline
+- `create_sample.py`: Utility to create smaller samples from large Discord exports
 - `requirements.txt`: Python dependencies
 - `general.json`: Sample Discord export data
+- `sample.json`, `sample_1k.json`: Sample data files for testing
 
 ### Pipeline Steps
 
@@ -92,6 +94,18 @@ Change the classification model by passing `--model` parameter:
 
 ```bash
 python test_local.py general.json --model "microsoft/DialoGPT-medium"
+```
+
+### Sample Data Creation
+
+Create smaller samples from large Discord exports for testing:
+
+```bash
+# Create a random sample of 1000 messages
+python create_sample.py general.json --output sample_1k.json --sample-size 1000 --random
+
+# Create a sequential sample of 500 messages
+python create_sample.py general.json --output sample_500.json --sample-size 500
 ```
 
 ### Custom Segmentation
