@@ -12,17 +12,14 @@ st.set_page_config(
 )
 
 @st.cache_data
-def load_discord_data():
+def load_discord_data(uploaded_file):
     """Load and parse Discord export JSON data"""
-    data_path = "data/discord_new-symphony-alert_data.json"
+    if uploaded_file is None:
+        return None
     
     try:
-        with open(data_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = json.load(uploaded_file)
         return data
-    except FileNotFoundError:
-        st.error(f"Data file not found: {data_path}")
-        return None
     except json.JSONDecodeError as e:
         st.error(f"Error parsing JSON: {e}")
         return None
@@ -84,11 +81,21 @@ def main():
     st.title("📊 Discord Embeds Analysis")
     st.markdown("Analysis of embed data from Discord export")
     
+    # File upload section
+    st.header("📁 Data Source")
+    uploaded_file = st.file_uploader(
+        "Upload Discord export JSON file",
+        type=['json'],
+        help="Upload a Discord export JSON file to analyze embed data"
+    )
+    
     # Load data
     with st.spinner("Loading Discord data..."):
-        discord_data = load_discord_data()
+        discord_data = load_discord_data(uploaded_file)
     
     if discord_data is None:
+        if uploaded_file is None:
+            st.info("👆 Please upload a Discord export JSON file to begin analysis")
         st.stop()
     
     # Extract embeds
