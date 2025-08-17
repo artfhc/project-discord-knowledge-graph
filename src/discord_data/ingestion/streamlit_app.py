@@ -78,6 +78,9 @@ def extract_embeds_data(discord_data):
     return df
 
 def main():
+    # Clear cache if needed (can remove this line after first run)
+    st.cache_data.clear()
+    
     st.title("📊 Discord Embeds Analysis")
     st.markdown("Analysis of embed data from Discord export")
     
