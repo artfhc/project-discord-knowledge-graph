@@ -10,6 +10,13 @@ This project ingests messages from Discord servers, processes and classifies the
 
 The system follows a 4-layer pipeline architecture:
 
+### 1. Ingestion Layer
+
+- **Purpose**: Periodically fetch historical messages from Discord servers
+- **Technology**: DiscordChatExporter.Cli via Docker + GitHub Actions
+- **Schedule**: Daily automated exports via cron
+- **Output**: JSON message dumps stored in cloud storage (B2)
+
 ### 2. Preprocessing Layer
 
 - **Purpose**: Clean, enrich, segment, and classify messages to prepare for extraction and graph construction.
@@ -67,11 +74,25 @@ The system follows a 4-layer pipeline architecture:
 }
 ```
 
+- **Comparison of Classification Options**:
+
+| Option             | Model           | Infra           | Speed    | Cost Estimate (1M msgs) | Batch Support | Notes                               |
+| ------------------ | --------------- | --------------- | -------- | ----------------------- | ------------- | ----------------------------------- |
+| OpenAI GPT-3.5     | Zero/few-shot   | API (OpenAI)    | Slow–Med | \~\$400–500 unbatched   | ✅ Yes         | Great accuracy, expensive unbatched |
+| Claude 3 Haiku     | Zero/few-shot   | API (Anthropic) | Med      | \~\$100–200 batched     | ✅ Yes         | Good value, 200K token context      |
+| Cohere Classify    | Custom model    | API (Cohere)    | Fast     | \~\$80–150 batched      | ✅ Yes         | Native classification endpoint      |
+| TinyBERT           | Distilled BERT  | Self-hosted     | Fast     | \~\$10–20 GPU infra     | ✅ Yes         | Best for cheap, large-scale runs    |
+| DistilBERT         | Distilled BERT  | Self-hosted     | Fast     | \~\$10–30 GPU infra     | ✅ Yes         | Slightly larger, still efficient    |
+| vLLM w/ GPTQ model | Open LLM (GGUF) | Self-hosted     | Fast     | \~\$20–50 infra         | ✅ Yes         | Depends on GPU and batching config  |
+
 ### 3. Entity & Relation Extraction Layer
 
 - **Purpose**: Convert messages into structured knowledge triples
 - **Granularity**: Per-message extraction
-- **Output Format**: JSON triples like `[["user123", "recommends", "BTC breakout"], ["BTC", "has_sentiment", "bullish"]]`
+- **Output Format**: JSON triples like `["user123", "recommends", "BTC breakout"]`
+- **Enhancements**:
+  - Include `confidence_score` and `source_message_id`
+  - Normalize entities across variants (e.g., "btc" = "Bitcoin")
 
 ### 4. Query & LLM Integration Layer
 
@@ -89,12 +110,12 @@ The system follows a 4-layer pipeline architecture:
 - **Tools**:
   - LangChain's `Neo4jGraph` or `GraphQAChain`
   - Optional: custom Streamlit or CLI-based query interface
-- **Input**: Natural language question
-- **Output**: LLM-generated, graph-grounded answer
 - **Advanced Features**:
   - Subgraph summarization
   - Sentiment/time-based filters
   - Alerts or notifications on graph change events
+
+---
 
 ## 🚀 Current Implementation Status
 
