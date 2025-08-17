@@ -85,14 +85,75 @@ The system follows a 4-layer pipeline architecture:
 | DistilBERT         | Distilled BERT  | Self-hosted     | Fast     | \~\$10–30 GPU infra     | ✅ Yes         | Slightly larger, still efficient    |
 | vLLM w/ GPTQ model | Open LLM (GGUF) | Self-hosted     | Fast     | \~\$20–50 infra         | ✅ Yes         | Depends on GPU and batching config  |
 
-### 3. Entity & Relation Extraction Layer
+  ### 3. Entity & Relation Extraction Layer
 
-- **Purpose**: Convert messages into structured knowledge triples
-- **Granularity**: Per-message extraction
-- **Output Format**: JSON triples like `["user123", "recommends", "BTC breakout"]`
+- **Purpose**: Convert preprocessed messages into structured knowledge triples.
+
+- **Input**: Preprocessed `.jsonl` messages with `segment_id`, `type`, `author`, and `clean_text` from Step 2.
+
+- **Process**:
+
+  - For each message, use LLM or rule-based extraction to emit structured triples (subject, predicate, object).
+  - The extraction strategy depends on the message `type` from Step 2:
+    - `strategy`: extract subjects and verbs related to investment techniques (e.g., ["user123", "discusses", "covered call strategy"])
+    - `alert`: extract notification content and audience (e.g., ["user456", "alerts", "all\_members about CPI release"])
+    - `question`: extract question topics (e.g., ["user789", "asks\_about", "Mega Backdoor Roth"])
+    - `answer`: extract response linkage or factual statements
+    - `signal`: extract asset, action, and timing (e.g., ["user321", "recommends", "Buy BTC at \$60K"])
+    - `analysis`: extract target asset and key insights (e.g., ["user777", "analyzes", "Tesla Q4 earnings"])
+    - `performance`: extract P&L claims or strategy metrics (e.g., ["user999", "reports\_return", "+12% on breakout strategy"])
+    - `discussion`: extract debate topics or opinions optionally
+
+- **Linking Q&A**:
+
+  - Within each segment, if a `question` is found, scan for the nearest `answer` that:
+    - Appears shortly after the question
+    - Mentions or replies to the same user
+    - Is within 5–10 messages or 10 minute window
+  - Emit a link:
+    ```json
+    ["question_msg_123", "answered_by", "answer_msg_456"]
+    ```
+  - Optionally, match semantically using embeddings or cosine similarity
+
+- **Output Format**:
+
+  - Triples like:
+    ```json
+    ["user123", "recommends", "BTC breakout"]
+    ["msg456", "answered_by", "msg789"]
+    ```
+  - With metadata: `message_id`, `timestamp`, `confidence_score`, `segment_id`
+
 - **Enhancements**:
-  - Include `confidence_score` and `source_message_id`
+
   - Normalize entities across variants (e.g., "btc" = "Bitcoin")
+  - Attach user role metadata for trust evaluation
+  - Use `type` to select different prompt templates or extraction strategies
+
+- **Model Comparison Table for Step 3**:
+
+| **Option**                        | **Approach**         | **Infra**       | **Speed** | **Cost (per 1M msgs)** | **Pros**                                                      | **Cons**                                       | **Use When**                                         |
+| --------------------------------- | -------------------- | --------------- | --------- | ---------------------- | ------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| **OpenAI GPT-4 / GPT-3.5**        | Prompted LLM (RAG)   | API (OpenAI)    | Slow–Med  | \~\$500–\$800          | High accuracy, can extract complex triples with minimal setup | High cost, slow inference                      | You need max accuracy or one-off high-quality runs   |
+| **Claude 3 Haiku**                | Prompted LLM (RAG)   | API (Anthropic) | Medium    | \~\$200–\$400          | Fast, accurate, large context window (200k tokens)            | Still costly for real-time or high volume      | Balanced cost/accuracy; ideal for segment-level jobs |
+| **DistilBERT + Rule-Based**       | NER + Template Match | Self-hosted     | Fast      | \~\$10–\$30 (GPU)      | Cheap, good for predictable patterns (e.g. signals, alerts)   | Requires hand-tuned rules/templates            | You have clear rules for each message type           |
+| **SpaCy + Custom Rules**          | Rule-Based NLP       | Local / Server  | Very fast | \~\$5–\$10 infra       | Fast, fully local, great for extracting names, tickers, dates | Not good with fuzzy logic or creative phrasing | Preprocessing & light-weight pipelines               |
+| **HuggingFace BART (fine-tuned)** | Sequence-to-Triple   | Self-hosted GPU | Medium    | \~\$50–\$100           | Can extract triples directly; flexible                        | Requires fine-tuning + GPU infra               | You want structured triples and control              |
+| **LLM + Sentence Transformers**   | Embedding Clustering | Local / Hybrid  | Medium    | \~\$30–\$100           | Semantic similarity for Q&A, links, cluster analysis          | Not pure triple extraction                     | Linking Q&A / dedup / summary tasks                  |
+
+- **Message-Type Strategy Map**:
+
+| **Message Type** | **Best Model / Strategy**                                 |
+| ---------------- | --------------------------------------------------------- |
+| `signal`         | Rule-based pattern + NER (e.g., “Buy BTC at \$60K”)       |
+| `alert`          | Regex / SpaCy pipeline (e.g., “Reminder: FOMC today!”)    |
+| `strategy`       | Claude or DistilBERT + rule hybrid                        |
+| `analysis`       | Claude / GPT (more abstract reasoning needed)             |
+| `question`       | Light NLP + Q/A linker using timestamp + semantic search  |
+| `answer`         | Embed-based semantic match + linking to previous question |
+| `performance`    | Regex or BERT for P&L, % returns, benchmark terms         |
+| `discussion`     | Usually skipped or lightly summarized                     |
 
 ### 4. Query & LLM Integration Layer
 
