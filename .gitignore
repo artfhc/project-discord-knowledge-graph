@@ -9,8 +9,9 @@ claude.md
 # Mac
 .DS_Store
 
-# Data
-data/
+# JSON files
+*.json
+*.jsonl
 
 # C extensions
 *.so

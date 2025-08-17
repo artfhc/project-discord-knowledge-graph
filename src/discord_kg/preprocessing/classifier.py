@@ -32,16 +32,19 @@ class ClassifiedMessage:
 class DiscordMessageClassifier:
     """Zero-shot classifier for Discord messages using BART-MNLI"""
     
-    def __init__(self, model_name: str = "facebook/bart-large-mnli"):
+    def __init__(self, model_name: str = "facebook/bart-large-mnli", batch_size: int = 16):
         """Initialize classifier with zero-shot classification model"""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch_size = batch_size
         print(f"Using device: {self.device}")
+        print(f"Batch size: {batch_size}")
         
-        # Use zero-shot classification pipeline
+        # Use zero-shot classification pipeline with batch support
         self.classifier = pipeline(
             "zero-shot-classification",
             model=model_name,
-            device=0 if torch.cuda.is_available() else -1
+            device=0 if torch.cuda.is_available() else -1,
+            batch_size=batch_size
         )
         
         # Label mapping for Discord message types

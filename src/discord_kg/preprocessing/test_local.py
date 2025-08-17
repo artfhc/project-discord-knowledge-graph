@@ -37,15 +37,37 @@ def run_full_pipeline(input_file: str, output_file: str = None,
     print()
     
     # Step 2: Classification
-    print("Step 2: Classifying messages with TinyBERT...")
+    print("Step 2: Classifying messages with BART-MNLI...")
     classifier = DiscordMessageClassifier(model_name=model_name)
     
-    # Classify each preprocessed message
-    for msg in preprocessed_messages:
+    # Classify each preprocessed message with progress bar
+    print(f"Classifying {len(preprocessed_messages)} messages...")
+    from tqdm import tqdm
+    import time
+    
+    start_time = time.time()
+    processed_count = 0
+    
+    for i, msg in enumerate(tqdm(preprocessed_messages, desc="Classifying", unit="msgs")):
         if msg.clean_text.strip():
             msg_type, confidence = classifier.classify_message(msg.clean_text)
             msg.type = msg_type
             msg.confidence = confidence
+            processed_count += 1
+        
+        # Print detailed progress every 1000 messages
+        if (i + 1) % 1000 == 0:
+            elapsed = time.time() - start_time
+            rate = processed_count / elapsed if elapsed > 0 else 0
+            remaining = (len(preprocessed_messages) - i - 1) / rate if rate > 0 else 0
+            
+            print(f"\n📊 Progress Update:")
+            print(f"   Processed: {i + 1:,}/{len(preprocessed_messages):,} messages")
+            print(f"   Classified: {processed_count:,} messages") 
+            print(f"   Rate: {rate:.1f} msgs/sec")
+            print(f"   Elapsed: {elapsed/60:.1f} minutes")
+            print(f"   ETA: {remaining/60:.1f} minutes remaining")
+            print()
     
     # Print classification stats
     classifier.print_stats(preprocessed_messages)
