@@ -1,0 +1,23 @@
+# Evaluation App Dependencies
+# Discord Knowledge Graph - Extraction Comparison Tool
+
+# Core web framework
+streamlit>=1.28.0
+
+# Data processing
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Visualization  
+plotly>=5.15.0
+
+# Standard library (no additional requirements)
+# - json (built-in)
+# - collections (built-in) 
+# - datetime (built-in)
+# - pathlib (built-in)
+# - re (built-in)
+
+# Optional: Enhanced data analysis
+# scipy>=1.9.0  # For advanced statistics
+# matplotlib>=3.5.0  # Additional plotting options
