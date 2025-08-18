@@ -53,11 +53,17 @@ streamlit run app.py
 - **Statistical summaries** (mean, median, std dev)
 - **Method performance over time**
 
-### 4. **🎯 Quality Analysis**
-- **Agreement metrics** between methods
-- **Top disagreement identification**
-- **Coverage analysis** (which method extracts more)
-- **Overlap scoring** for predicate types
+### 4. **🎯 Enhanced Quality Analysis**
+- **Categorized analysis tabs** for systematic evaluation:
+  - High disagreements with detailed comparison views
+  - Perfect matches for validation of consistent results
+  - Low confidence cases for quality improvement targeting
+  - Method-only extractions for coverage gap analysis
+- **Flexible display controls** allowing users to view all cases instead of limited samples
+- **Comprehensive debugging tools** with triple count verification
+- **Full message content display** with complete extracted triple visualization
+- **Agreement metrics** and overlap scoring for predicate types
+- **Interactive exploration** with expandable case details
 
 ## 📁 Data Requirements
 
@@ -134,9 +140,15 @@ The app has 4 main views accessible via the sidebar:
 - **Temporal analysis** showing extraction patterns over time
 
 #### 🎯 Quality Analysis
-- **Agreement metrics** between methods
-- **Disagreement analysis** highlighting problem cases
-- **Coverage comparison** (which method finds more)
+- **Four focused analysis tabs** for targeted debugging:
+  - **High Disagreements** - Cases where methods produce very different results
+  - **Perfect Matches** - Messages where both methods agree completely
+  - **Low Confidence Cases** - Extractions with confidence scores below 0.7
+  - **Method-Only Cases** - Messages extracted by only one method
+- **User-controlled case display** - Choose to show 5, 10, 25, 50, or ALL cases
+- **Full content display** with comprehensive triple visualization
+- **Debugging features** including triple count validation and error detection
+- **Agreement metrics** and coverage comparison statistics
 
 ### Filtering Options
 
@@ -180,14 +192,19 @@ See which method covers more messages:
 ```
 
 ### 3. **Debugging Extraction Issues**
-Find problematic extractions:
+Find problematic extractions with enhanced analysis tools:
 ```
 1. Go to "Quality Analysis"
-2. Check "High Disagreements" tab
-3. Use dropdown to show more cases (5, 10, 25, 50, or all)
-4. Review full message content and all extracted triples
-5. Compare side-by-side to understand method differences
-6. Use other tabs for low confidence and method-only cases
+2. Navigate between focused analysis tabs:
+   - "High Disagreements" - Find cases where methods differ significantly
+   - "Perfect Matches" - Verify consistent good extractions
+   - "Low Confidence Cases" - Identify uncertain extractions
+   - "Method-Only Cases" - Find coverage gaps
+3. Use dropdown controls to show more cases (5, 10, 25, 50, or ALL)
+4. Enable debugging features to see triple counts and validation
+5. Review full message content alongside all extracted triples
+6. Compare side-by-side extraction results to understand differences
+7. Look for patterns across different analysis categories
 ```
 
 ### 4. **Confidence Analysis**
