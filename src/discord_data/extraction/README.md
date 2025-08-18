@@ -120,10 +120,13 @@ The app has 4 main views accessible via the sidebar:
 - **Predicate distribution** analysis
 
 #### 🔍 Message Comparison  
-- **Message selector** with filtering options
-- **Original message display** with full metadata
-- **Side-by-side triple comparison** with confidence colors
-- **Comparison metrics** (overlap, counts)
+- **Interactive table view** for evaluating multiple messages at once
+- **Full content display** with toggle for truncated view
+- **Pagination support** with configurable page sizes (10-100 messages)
+- **Advanced filtering** by extraction method, message type, author
+- **Quick comparison metrics** (triple counts, overlap %, best triples)
+- **Click-to-expand** detailed view for individual messages
+- **Page-level summary statistics**
 
 #### 📊 Analytics
 - **Confidence histograms** for each method
@@ -158,12 +161,13 @@ The app has 4 main views accessible via the sidebar:
 ## 📋 Use Cases
 
 ### 1. **Quality Assessment**
-Compare extraction quality on the same messages:
+Compare extraction quality across multiple messages:
 ```
 1. Go to "Message Comparison"
 2. Filter: "Has Both" 
-3. Browse messages to see side-by-side results
-4. Look for patterns in disagreements
+3. Review table showing all messages with comparison metrics
+4. Click on specific rows for detailed triple comparison
+5. Look for patterns in disagreements and overlap %
 ```
 
 ### 2. **Method Coverage Analysis**
@@ -179,9 +183,10 @@ See which method covers more messages:
 Find problematic extractions:
 ```
 1. Go to "Quality Analysis"
-2. Check "Top Disagreements" 
-3. Click on high-disagreement messages
-4. Analyze why methods differ
+2. Check "High Disagreements" tab
+3. Review full message content and all extracted triples
+4. Compare side-by-side to understand method differences
+5. Use other tabs for low confidence and method-only cases
 ```
 
 ### 4. **Confidence Analysis**

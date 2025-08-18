@@ -521,9 +521,9 @@ def show_overview(data, has_rule, has_llm):
             st.plotly_chart(fig, use_container_width=True)
 
 def show_message_comparison(data, message_index, rule_index, llm_index, has_llm):
-    """Show detailed message-level comparison."""
+    """Show detailed message-level comparison in table format."""
     
-    st.header("🔍 Message-Level Comparison")
+    st.header("🔍 Message-Level Comparison Table")
     
     # Get messages that have extractions
     messages_with_extractions = set(rule_index.keys())
@@ -534,11 +534,9 @@ def show_message_comparison(data, message_index, rule_index, llm_index, has_llm)
         st.error("No messages with extractions found.")
         return
     
-    # Message selector
-    st.subheader("📝 Select Message")
-    
-    # Filter options
-    col1, col2 = st.columns(2)
+    # Filter and display options
+    st.subheader("🎛️ Filters & Display")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         filter_type = st.selectbox(
@@ -552,6 +550,12 @@ def show_message_comparison(data, message_index, rule_index, llm_index, has_llm)
             selected_type = st.selectbox("Message Type", list(msg_types))
         else:
             selected_type = None
+    
+    with col3:
+        page_size = st.selectbox("Messages per page", [10, 25, 50, 100], index=1)
+    
+    with col4:
+        show_full_content = st.checkbox("Show full content", value=True, help="Uncheck to truncate long messages")
     
     # Filter messages
     filtered_messages = []
@@ -579,101 +583,199 @@ def show_message_comparison(data, message_index, rule_index, llm_index, has_llm)
         st.warning(f"No messages found matching filter: {filter_type}")
         return
     
-    # Message selector
-    selected_message_id = st.selectbox(
-        f"Select Message ({len(filtered_messages)} available)",
-        filtered_messages,
-        format_func=lambda x: f"{x[:8]}... - {message_index.get(x, {}).get('author', 'Unknown')}: {message_index.get(x, {}).get('clean_text', 'No text')[:50]}..."
-    )
+    # Pagination
+    total_messages = len(filtered_messages)
+    total_pages = (total_messages - 1) // page_size + 1
     
-    if not selected_message_id:
-        return
+    if total_pages > 1:
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col2:
+            page_num = st.selectbox(
+                f"Page (1-{total_pages})",
+                range(1, total_pages + 1),
+                format_func=lambda x: f"Page {x}"
+            )
+        
+        start_idx = (page_num - 1) * page_size
+        end_idx = min(start_idx + page_size, total_messages)
+        page_messages = filtered_messages[start_idx:end_idx]
+        
+        st.info(f"Showing {start_idx + 1}-{end_idx} of {total_messages} messages")
+    else:
+        page_messages = filtered_messages
+        page_num = 1
     
-    # Show message details
-    message = message_index.get(selected_message_id, {})
-    rule_triples = rule_index.get(selected_message_id, [])
-    llm_triples = llm_index.get(selected_message_id, [])
+    # Create comparison table data
+    table_data = []
     
-    st.subheader("💬 Preprocessed Message (Step 2 Output)")
+    for msg_id in page_messages:
+        message = message_index.get(msg_id, {})
+        rule_triples = rule_index.get(msg_id, [])
+        llm_triples = llm_index.get(msg_id, [])
+        
+        # Calculate comparison metrics
+        rule_count = len(rule_triples)
+        llm_count = len(llm_triples)
+        
+        rule_predicates = set(t['predicate'] for t in rule_triples)
+        llm_predicates = set(t['predicate'] for t in llm_triples)
+        overlap = len(rule_predicates & llm_predicates)
+        total_unique = len(rule_predicates | llm_predicates)
+        overlap_pct = (overlap / total_unique * 100) if total_unique > 0 else 0
+        
+        # Get highest confidence triples for display
+        rule_best = max(rule_triples, key=lambda x: x['confidence']) if rule_triples else None
+        llm_best = max(llm_triples, key=lambda x: x['confidence']) if llm_triples else None
+        
+        # Handle content display based on user preference
+        content_text = message.get('clean_text', 'No content available')
+        if not show_full_content and len(content_text) > 80:
+            content_display = content_text[:80] + '...'
+        else:
+            content_display = content_text
+        
+        table_data.append({
+            'Message ID': msg_id[:8] + '...',
+            'Author': message.get('author', 'Unknown'),
+            'Type': message.get('type', 'Unknown'),
+            'Content': content_display,
+            'Rule Count': rule_count,
+            'LLM Count': llm_count if has_llm else 'N/A',
+            'Overlap %': f"{overlap_pct:.1f}%" if has_llm else 'N/A',
+            'Rule Best': f"{rule_best['predicate']} ({rule_best['confidence']:.2f})" if rule_best else 'None',
+            'LLM Best': f"{llm_best['predicate']} ({llm_best['confidence']:.2f})" if llm_best and has_llm else 'N/A',
+            'Full ID': msg_id  # Hidden column for selection
+        })
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"**Author:** {message.get('author', 'Unknown')}")
-        st.write(f"**Type:** {message.get('type', 'Unknown')}")
-        st.write(f"**Channel:** {message.get('channel', 'Unknown')}")
-    
-    with col2:
-        st.write(f"**Timestamp:** {message.get('timestamp', 'Unknown')}")
-        st.write(f"**Segment ID:** {message.get('segment_id', 'Unknown')}")
-        if message.get('mentions'):
-            st.write(f"**Mentions:** {', '.join(message['mentions'])}")
-    
-    st.markdown(f"""
-    <div class="comparison-box">
-        <strong>Content:</strong><br>
-        {message.get('clean_text', 'No content available')}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Show extractions side by side
-    st.subheader("🔄 Extraction Comparison")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 🟢 Rule-based Extraction")
-        if rule_triples:
-            for i, triple in enumerate(rule_triples):
-                conf_class = get_confidence_class(triple['confidence'])
+    # Display table
+    if table_data:
+        df = pd.DataFrame(table_data)
+        
+        # Configure column display
+        column_config = {
+            'Message ID': st.column_config.TextColumn('Message ID', width="small"),
+            'Author': st.column_config.TextColumn('Author', width="small"),
+            'Type': st.column_config.TextColumn('Type', width="small"),
+            'Content': st.column_config.TextColumn(
+                'Message Content', 
+                width="large",
+                help="Message text from preprocessing (toggle 'Show full content' to control display)"
+            ),
+            'Rule Count': st.column_config.NumberColumn('Rule Count', width="small"),
+            'LLM Count': st.column_config.TextColumn('LLM Count', width="small"),
+            'Overlap %': st.column_config.TextColumn('Overlap %', width="small"),
+            'Rule Best': st.column_config.TextColumn('Rule Best Triple', width="medium"),
+            'LLM Best': st.column_config.TextColumn('LLM Best Triple', width="medium"),
+            'Full ID': None  # Hide this column
+        }
+        
+        # Show the table
+        event = st.dataframe(
+            df.drop(columns=['Full ID']),
+            column_config=column_config,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        
+        # Handle row selection for detailed view
+        if event.selection.rows:
+            selected_row_idx = event.selection.rows[0]
+            selected_msg_id = df.iloc[selected_row_idx]['Full ID']
+            
+            # Show detailed view for selected message
+            st.subheader(f"📋 Detailed View - Message {selected_msg_id[:8]}...")
+            
+            message = message_index.get(selected_msg_id, {})
+            rule_triples = rule_index.get(selected_msg_id, [])
+            llm_triples = llm_index.get(selected_msg_id, [])
+            
+            # Message details
+            with st.expander("💬 Message Details", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write(f"**Author:** {message.get('author', 'Unknown')}")
+                    st.write(f"**Type:** {message.get('type', 'Unknown')}")
+                    st.write(f"**Channel:** {message.get('channel', 'Unknown')}")
+                
+                with col2:
+                    st.write(f"**Timestamp:** {message.get('timestamp', 'Unknown')}")
+                    st.write(f"**Segment ID:** {message.get('segment_id', 'Unknown')}")
+                    if message.get('mentions'):
+                        st.write(f"**Mentions:** {', '.join(message['mentions'])}")
+                
                 st.markdown(f"""
-                <div class="triple-box rule-based {conf_class}">
-                    <strong>Subject:</strong> {triple['subject']}<br>
-                    <strong>Predicate:</strong> {triple['predicate']}<br>
-                    <strong>Object:</strong> {triple['object']}<br>
-                    <strong>Confidence:</strong> {triple['confidence']:.2f}
+                <div class="comparison-box">
+                    <strong>Full Content:</strong><br>
+                    {message.get('clean_text', 'No content available')}
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("No rule-based extractions for this message")
-    
-    with col2:
-        st.markdown("### 🟣 LLM-based Extraction")
-        if has_llm and llm_triples:
-            for i, triple in enumerate(llm_triples):
-                conf_class = get_confidence_class(triple['confidence'])
-                st.markdown(f"""
-                <div class="triple-box llm-based {conf_class}">
-                    <strong>Subject:</strong> {triple['subject']}<br>
-                    <strong>Predicate:</strong> {triple['predicate']}<br>
-                    <strong>Object:</strong> {triple['object']}<br>
-                    <strong>Confidence:</strong> {triple['confidence']:.2f}
-                </div>
-                """, unsafe_allow_html=True)
-        elif not has_llm:
-            st.info("LLM extractions not available")
-        else:
-            st.info("No LLM extractions for this message")
-    
-    # Comparison metrics
-    if has_llm:
-        st.subheader("📊 Comparison Metrics")
+            
+            # Triple comparison
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("### 🟢 Rule-based Triples")
+                if rule_triples:
+                    for i, triple in enumerate(rule_triples):
+                        conf_class = get_confidence_class(triple['confidence'])
+                        st.markdown(f"""
+                        <div class="triple-box rule-based {conf_class}">
+                            <strong>Subject:</strong> {triple['subject']}<br>
+                            <strong>Predicate:</strong> {triple['predicate']}<br>
+                            <strong>Object:</strong> {triple['object']}<br>
+                            <strong>Confidence:</strong> {triple['confidence']:.2f}
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No rule-based extractions")
+            
+            with col2:
+                st.markdown("### 🟣 LLM-based Triples")
+                if has_llm and llm_triples:
+                    for i, triple in enumerate(llm_triples):
+                        conf_class = get_confidence_class(triple['confidence'])
+                        st.markdown(f"""
+                        <div class="triple-box llm-based {conf_class}">
+                            <strong>Subject:</strong> {triple['subject']}<br>
+                            <strong>Predicate:</strong> {triple['predicate']}<br>
+                            <strong>Object:</strong> {triple['object']}<br>
+                            <strong>Confidence:</strong> {triple['confidence']:.2f}
+                        </div>
+                        """, unsafe_allow_html=True)
+                elif not has_llm:
+                    st.info("LLM extractions not available")
+                else:
+                    st.info("No LLM extractions")
         
-        comparison = compare_triples_for_message(selected_message_id, rule_triples, llm_triples)
+        # Summary statistics for current page
+        st.subheader("📊 Page Summary")
+        col1, col2, col3, col4 = st.columns(4)
         
-        col1, col2, col3 = st.columns(3)
+        rule_counts = [row['Rule Count'] for row in table_data]
+        llm_counts = [row['LLM Count'] for row in table_data if row['LLM Count'] != 'N/A']
         
         with col1:
-            st.metric("Rule-based Triples", comparison['rule_based_count'])
+            st.metric("Avg Rule Triples", f"{sum(rule_counts) / len(rule_counts):.1f}" if rule_counts else "0")
         
         with col2:
-            st.metric("LLM-based Triples", comparison['llm_based_count'])
+            if has_llm and llm_counts:
+                st.metric("Avg LLM Triples", f"{sum(llm_counts) / len(llm_counts):.1f}")
+            else:
+                st.metric("Avg LLM Triples", "N/A")
         
         with col3:
-            if comparison['total_unique_predicates'] > 0:
-                overlap_pct = comparison['predicate_overlap'] / comparison['total_unique_predicates'] * 100
-                st.metric("Predicate Overlap", f"{overlap_pct:.1f}%")
+            both_methods = len([row for row in table_data if row['Rule Count'] > 0 and row['LLM Count'] != 'N/A' and row['LLM Count'] > 0])
+            st.metric("Both Methods", f"{both_methods}/{len(table_data)}")
+        
+        with col4:
+            if has_llm:
+                overlaps = [float(row['Overlap %'].replace('%', '')) for row in table_data if row['Overlap %'] != 'N/A']
+                avg_overlap = sum(overlaps) / len(overlaps) if overlaps else 0
+                st.metric("Avg Overlap", f"{avg_overlap:.1f}%")
             else:
-                st.metric("Predicate Overlap", "0%")
+                st.metric("Avg Overlap", "N/A")
 
 def show_analytics(data, has_rule, has_llm):
     """Show detailed analytics and insights."""
@@ -753,16 +855,12 @@ def show_analytics(data, has_rule, has_llm):
             st.plotly_chart(fig, use_container_width=True)
 
 def show_quality_analysis(data, message_index, rule_index, llm_index, has_llm):
-    """Show quality analysis and potential issues."""
+    """Show quality analysis with full content and triples."""
     
     st.header("🎯 Quality Analysis")
     
-    if not has_llm:
-        st.warning("LLM data required for comprehensive quality analysis")
-        return
-    
-    # Quality metrics
-    st.subheader("📈 Quality Metrics")
+    # Quality metrics overview
+    st.subheader("📈 Quality Overview")
     
     # Calculate message-level comparisons
     comparisons = []
@@ -794,27 +892,42 @@ def show_quality_analysis(data, message_index, rule_index, llm_index, has_llm):
     with col4:
         st.metric("LLM Only", messages_llm_only)
     
-    # Agreement analysis
-    st.subheader("🤝 Method Agreement")
+    # Analysis categories
+    st.subheader("🔍 Detailed Analysis")
     
-    if messages_with_both > 0:
-        overlaps = [c['predicate_overlap'] for c in comparisons if c['rule_based_count'] > 0 and c['llm_based_count'] > 0]
-        avg_overlap = sum(overlaps) / len(overlaps) if overlaps else 0
-        
-        st.metric("Average Predicate Overlap", f"{avg_overlap:.1f}")
-        
-        # Overlap distribution
-        fig = px.histogram(x=overlaps, title="Predicate Overlap Distribution", nbins=10)
-        st.plotly_chart(fig, use_container_width=True)
+    # Create tabs for different analysis types
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🚨 High Disagreements", 
+        "✅ Perfect Matches", 
+        "📊 Low Confidence", 
+        "🎯 Method-Only Cases"
+    ])
     
-    # Top disagreements
-    st.subheader("⚠️ Top Disagreements")
+    with tab1:
+        show_high_disagreements(comparisons, message_index, rule_index, llm_index, has_llm)
     
+    with tab2:
+        show_perfect_matches(comparisons, message_index, rule_index, llm_index, has_llm)
+    
+    with tab3:
+        show_low_confidence_cases(comparisons, message_index, rule_index, llm_index, has_llm)
+    
+    with tab4:
+        show_method_only_cases(comparisons, message_index, rule_index, llm_index, has_llm, messages_rule_only, messages_llm_only)
+
+def show_high_disagreements(comparisons, message_index, rule_index, llm_index, has_llm):
+    """Show cases where methods strongly disagree."""
+    
+    if not has_llm:
+        st.info("LLM data required for disagreement analysis")
+        return
+    
+    # Find high disagreement cases
     disagreements = []
     for comparison in comparisons:
         if comparison['rule_based_count'] > 0 and comparison['llm_based_count'] > 0:
             disagreement_score = abs(comparison['rule_based_count'] - comparison['llm_based_count'])
-            if disagreement_score > 0:
+            if disagreement_score >= 2:  # Significant difference
                 disagreements.append({
                     'message_id': comparison['message_id'],
                     'disagreement_score': disagreement_score,
@@ -823,17 +936,260 @@ def show_quality_analysis(data, message_index, rule_index, llm_index, has_llm):
                     'overlap': comparison['predicate_overlap']
                 })
     
-    if disagreements:
-        disagreements.sort(key=lambda x: x['disagreement_score'], reverse=True)
+    if not disagreements:
+        st.success("🎉 No significant disagreements found! Methods are well-aligned.")
+        return
+    
+    disagreements.sort(key=lambda x: x['disagreement_score'], reverse=True)
+    
+    st.write(f"Found {len(disagreements)} messages with significant extraction differences (≥2 triples)")
+    
+    # Show top disagreements with full content and triples
+    for i, d in enumerate(disagreements[:5]):  # Show top 5
+        msg_id = d['message_id']
+        message = message_index.get(msg_id, {})
+        rule_triples = rule_index.get(msg_id, [])
+        llm_triples = llm_index.get(msg_id, [])
         
-        st.write("Messages with highest extraction count differences:")
-        for i, d in enumerate(disagreements[:10]):
-            msg = message_index.get(d['message_id'], {})
-            with st.expander(f"#{i+1} - Message {d['message_id'][:8]}... (Diff: {d['disagreement_score']})"):
-                st.write(f"**Content:** {msg.get('clean_text', 'No content')[:200]}...")
-                st.write(f"**Rule-based triples:** {d['rule_count']}")
-                st.write(f"**LLM triples:** {d['llm_count']}")
-                st.write(f"**Overlap:** {d['overlap']}")
+        with st.expander(f"🚨 #{i+1} - {msg_id[:8]}... | Rule: {d['rule_count']} vs LLM: {d['llm_count']} | Diff: {d['disagreement_score']}", expanded=i==0):
+            
+            # Message details
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**Author:** {message.get('author', 'Unknown')}")
+                st.write(f"**Type:** {message.get('type', 'Unknown')}")
+            
+            with col2:
+                st.write(f"**Overlap:** {d['overlap']} predicates")
+                st.write(f"**Channel:** {message.get('channel', 'Unknown')}")
+            
+            # Full content
+            st.markdown("**📝 Full Message Content:**")
+            st.markdown(f"""
+            <div class="comparison-box">
+                {message.get('clean_text', 'No content available')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show all triples side by side
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🟢 Rule-based Triples:**")
+                if rule_triples:
+                    for j, triple in enumerate(rule_triples):
+                        conf_class = get_confidence_class(triple['confidence'])
+                        st.markdown(f"""
+                        <div class="triple-box rule-based {conf_class}" style="margin-bottom: 5px;">
+                            <strong>{j+1}.</strong> {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                            <small>Confidence: {triple['confidence']:.2f}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No rule-based extractions")
+            
+            with col2:
+                st.markdown("**🟣 LLM-based Triples:**")
+                if llm_triples:
+                    for j, triple in enumerate(llm_triples):
+                        conf_class = get_confidence_class(triple['confidence'])
+                        st.markdown(f"""
+                        <div class="triple-box llm-based {conf_class}" style="margin-bottom: 5px;">
+                            <strong>{j+1}.</strong> {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                            <small>Confidence: {triple['confidence']:.2f}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No LLM extractions")
+
+def show_perfect_matches(comparisons, message_index, rule_index, llm_index, has_llm):
+    """Show cases where methods agree perfectly."""
+    
+    if not has_llm:
+        st.info("LLM data required for match analysis")
+        return
+    
+    # Find perfect matches (same predicate count and high overlap)
+    perfect_matches = []
+    for comparison in comparisons:
+        if (comparison['rule_based_count'] > 0 and comparison['llm_based_count'] > 0 and 
+            comparison['rule_based_count'] == comparison['llm_based_count'] and
+            comparison['predicate_overlap'] >= comparison['rule_based_count'] * 0.8):  # 80% overlap
+            perfect_matches.append(comparison)
+    
+    if not perfect_matches:
+        st.info("No perfect matches found. Try looking at cases with smaller differences.")
+        return
+    
+    st.success(f"🎉 Found {len(perfect_matches)} messages where methods closely agree!")
+    
+    # Show a few examples
+    for i, comparison in enumerate(perfect_matches[:3]):
+        msg_id = comparison['message_id']
+        message = message_index.get(msg_id, {})
+        rule_triples = rule_index.get(msg_id, [])
+        llm_triples = llm_index.get(msg_id, [])
+        
+        with st.expander(f"✅ #{i+1} - {msg_id[:8]}... | Both: {comparison['rule_based_count']} triples | Overlap: {comparison['predicate_overlap']}", expanded=i==0):
+            
+            # Message content
+            st.markdown("**📝 Message Content:**")
+            st.markdown(f"""
+            <div class="comparison-box">
+                {message.get('clean_text', 'No content available')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show triples
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🟢 Rule-based:**")
+                for j, triple in enumerate(rule_triples):
+                    st.write(f"{j+1}. **{triple['predicate']}**: {triple['subject']} → {triple['object']}")
+            
+            with col2:
+                st.markdown("**🟣 LLM-based:**")
+                for j, triple in enumerate(llm_triples):
+                    st.write(f"{j+1}. **{triple['predicate']}**: {triple['subject']} → {triple['object']}")
+
+def show_low_confidence_cases(comparisons, message_index, rule_index, llm_index, has_llm):
+    """Show cases with low confidence extractions."""
+    
+    # Find low confidence cases
+    low_confidence_cases = []
+    
+    for comparison in comparisons:
+        msg_id = comparison['message_id']
+        rule_triples = rule_index.get(msg_id, [])
+        llm_triples = llm_index.get(msg_id, []) if has_llm else []
+        
+        # Check for low confidence in either method
+        rule_low_conf = [t for t in rule_triples if t['confidence'] < 0.6]
+        llm_low_conf = [t for t in llm_triples if t['confidence'] < 0.6] if has_llm else []
+        
+        if rule_low_conf or llm_low_conf:
+            low_confidence_cases.append({
+                'message_id': msg_id,
+                'rule_low_count': len(rule_low_conf),
+                'llm_low_count': len(llm_low_conf),
+                'rule_low_triples': rule_low_conf,
+                'llm_low_triples': llm_low_conf
+            })
+    
+    if not low_confidence_cases:
+        st.success("🎉 No low confidence extractions found! All extractions are high quality.")
+        return
+    
+    st.write(f"Found {len(low_confidence_cases)} messages with low confidence extractions (<0.6)")
+    
+    # Show examples
+    for i, case in enumerate(low_confidence_cases[:3]):
+        msg_id = case['message_id']
+        message = message_index.get(msg_id, {})
+        
+        with st.expander(f"⚠️ #{i+1} - {msg_id[:8]}... | Rule low: {case['rule_low_count']} | LLM low: {case['llm_low_count']}", expanded=i==0):
+            
+            # Message content
+            st.markdown("**📝 Message Content:**")
+            st.markdown(f"""
+            <div class="comparison-box">
+                {message.get('clean_text', 'No content available')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show low confidence triples
+            if case['rule_low_triples']:
+                st.markdown("**🟢 Rule-based Low Confidence:**")
+                for triple in case['rule_low_triples']:
+                    st.markdown(f"""
+                    <div class="triple-box rule-based confidence-low">
+                        {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                        <small>Confidence: {triple['confidence']:.2f}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            if case['llm_low_triples'] and has_llm:
+                st.markdown("**🟣 LLM-based Low Confidence:**")
+                for triple in case['llm_low_triples']:
+                    st.markdown(f"""
+                    <div class="triple-box llm-based confidence-low">
+                        {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                        <small>Confidence: {triple['confidence']:.2f}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+def show_method_only_cases(comparisons, message_index, rule_index, llm_index, has_llm, messages_rule_only, messages_llm_only):
+    """Show cases where only one method extracted triples."""
+    
+    # Create sub-tabs
+    subtab1, subtab2 = st.tabs(["🟢 Rule-based Only", "🟣 LLM Only"])
+    
+    with subtab1:
+        rule_only_cases = [c for c in comparisons if c['rule_based_count'] > 0 and c['llm_based_count'] == 0]
+        
+        if not rule_only_cases:
+            st.info("No rule-based only cases found")
+        else:
+            st.write(f"Found {len(rule_only_cases)} messages where only rule-based extracted triples")
+            
+            for i, case in enumerate(rule_only_cases[:3]):
+                msg_id = case['message_id']
+                message = message_index.get(msg_id, {})
+                rule_triples = rule_index.get(msg_id, [])
+                
+                with st.expander(f"🟢 #{i+1} - {msg_id[:8]}... | {case['rule_based_count']} triples", expanded=i==0):
+                    st.markdown("**📝 Message Content:**")
+                    st.markdown(f"""
+                    <div class="comparison-box">
+                        {message.get('clean_text', 'No content available')}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("**🟢 Rule-based Triples:**")
+                    for j, triple in enumerate(rule_triples):
+                        conf_class = get_confidence_class(triple['confidence'])
+                        st.markdown(f"""
+                        <div class="triple-box rule-based {conf_class}">
+                            {j+1}. {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                            <small>Confidence: {triple['confidence']:.2f}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+    
+    with subtab2:
+        if not has_llm:
+            st.info("LLM data not available")
+            return
+            
+        llm_only_cases = [c for c in comparisons if c['rule_based_count'] == 0 and c['llm_based_count'] > 0]
+        
+        if not llm_only_cases:
+            st.info("No LLM-only cases found")
+        else:
+            st.write(f"Found {len(llm_only_cases)} messages where only LLM extracted triples")
+            
+            for i, case in enumerate(llm_only_cases[:3]):
+                msg_id = case['message_id']
+                message = message_index.get(msg_id, {})
+                llm_triples = llm_index.get(msg_id, [])
+                
+                with st.expander(f"🟣 #{i+1} - {msg_id[:8]}... | {case['llm_based_count']} triples", expanded=i==0):
+                    st.markdown("**📝 Message Content:**")
+                    st.markdown(f"""
+                    <div class="comparison-box">
+                        {message.get('clean_text', 'No content available')}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("**🟣 LLM-based Triples:**")
+                    for j, triple in enumerate(llm_triples):
+                        conf_class = get_confidence_class(triple['confidence'])
+                        st.markdown(f"""
+                        <div class="triple-box llm-based {conf_class}">
+                            {j+1}. {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                            <small>Confidence: {triple['confidence']:.2f}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     # Import numpy for statistics (with fallback)
