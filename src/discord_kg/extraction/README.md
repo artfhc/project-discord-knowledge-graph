@@ -2,6 +2,24 @@
 
 This stage transforms classified and segmented Discord messages into structured triples suitable for knowledge graph construction.
 
+## 🏗️ Implementation Options
+
+This directory contains **two complete implementations** optimized for different use cases:
+
+### 📁 [`rule_based/`](./rule_based/) - **Fast & Cost-Effective**
+- **Cost**: $0 (runs locally)
+- **Speed**: 100+ messages/second  
+- **Accuracy**: 85-95% for structured patterns
+- **Best for**: Production, high volume, cost-sensitive
+
+### 📁 [`llm_powered/`](./llm_powered/) - **High Accuracy**
+- **Cost**: ~$0.06-0.14 per 1K messages
+- **Speed**: API-limited (2-5 minutes for 1K messages)
+- **Accuracy**: 90-95% with complex reasoning
+- **Best for**: Research, analysis, complex content
+
+---
+
 ---
 
 ## 🎯 Purpose

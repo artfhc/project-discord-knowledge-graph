@@ -1,0 +1,22 @@
+# LLM-Powered Step 3 Extraction Dependencies
+
+# Core LLM APIs
+openai>=1.0.0
+anthropic>=0.8.0
+
+# Data processing
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Text processing
+regex>=2022.0.0
+
+# Optional: Local embeddings for fallback
+sentence-transformers>=2.2.0
+scikit-learn>=1.1.0
+
+# Cloud storage (optional)
+boto3>=1.26.0
+
+# Graph database (optional)  
+neo4j>=5.0.0
