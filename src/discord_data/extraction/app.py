@@ -944,14 +944,43 @@ def show_high_disagreements(comparisons, message_index, rule_index, llm_index, h
     
     st.write(f"Found {len(disagreements)} messages with significant extraction differences (≥2 triples)")
     
-    # Show top disagreements with full content and triples
-    for i, d in enumerate(disagreements[:5]):  # Show top 5
+    # Add controls for viewing more cases
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        max_cases = st.selectbox(
+            "Cases to show", 
+            [5, 10, 25, 50, len(disagreements)],
+            index=0,
+            format_func=lambda x: f"Show {x}" if x < len(disagreements) else f"Show all {x}"
+        )
+    
+    with col2:
+        if st.button("🔄 Refresh Analysis"):
+            st.rerun()
+    
+    # Show disagreements with full content and triples
+    cases_to_show = min(max_cases, len(disagreements))
+    st.info(f"Showing {cases_to_show} of {len(disagreements)} cases with highest disagreement scores")
+    
+    for i, d in enumerate(disagreements[:cases_to_show]):
         msg_id = d['message_id']
         message = message_index.get(msg_id, {})
         rule_triples = rule_index.get(msg_id, [])
         llm_triples = llm_index.get(msg_id, [])
         
         with st.expander(f"🚨 #{i+1} - {msg_id[:8]}... | Rule: {d['rule_count']} vs LLM: {d['llm_count']} | Diff: {d['disagreement_score']}", expanded=i==0):
+            
+            # Debug information
+            if st.checkbox(f"Show debug info for case #{i+1}", key=f"debug_{i}"):
+                st.write(f"**Debug - Message ID:** {msg_id}")
+                st.write(f"**Debug - Rule triples found:** {len(rule_triples)}")
+                st.write(f"**Debug - LLM triples found:** {len(llm_triples)}")
+                st.write(f"**Debug - Message data:** {message}")
+                if rule_triples:
+                    st.write(f"**Debug - First rule triple:** {rule_triples[0]}")
+                if llm_triples:
+                    st.write(f"**Debug - First LLM triple:** {llm_triples[0]}")
+                st.write("---")
             
             # Message details
             col1, col2 = st.columns(2)
@@ -975,7 +1004,7 @@ def show_high_disagreements(comparisons, message_index, rule_index, llm_index, h
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**🟢 Rule-based Triples:**")
+                st.markdown(f"**🟢 Rule-based Triples ({len(rule_triples)} total):**")
                 if rule_triples:
                     for j, triple in enumerate(rule_triples):
                         conf_class = get_confidence_class(triple['confidence'])
@@ -989,7 +1018,7 @@ def show_high_disagreements(comparisons, message_index, rule_index, llm_index, h
                     st.info("No rule-based extractions")
             
             with col2:
-                st.markdown("**🟣 LLM-based Triples:**")
+                st.markdown(f"**🟣 LLM-based Triples ({len(llm_triples)} total):**")
                 if llm_triples:
                     for j, triple in enumerate(llm_triples):
                         conf_class = get_confidence_class(triple['confidence'])
@@ -1023,8 +1052,26 @@ def show_perfect_matches(comparisons, message_index, rule_index, llm_index, has_
     
     st.success(f"🎉 Found {len(perfect_matches)} messages where methods closely agree!")
     
-    # Show a few examples
-    for i, comparison in enumerate(perfect_matches[:3]):
+    # Add controls for viewing more perfect matches
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        max_matches = st.selectbox(
+            "Matches to show", 
+            [3, 10, 25, len(perfect_matches)],
+            index=0,
+            format_func=lambda x: f"Show {x}" if x < len(perfect_matches) else f"Show all {x}",
+            key="perfect_matches_count"
+        )
+    
+    with col2:
+        if st.button("🔄 Refresh Matches", key="refresh_matches"):
+            st.rerun()
+    
+    # Show examples
+    matches_to_show = min(max_matches, len(perfect_matches))
+    st.info(f"Showing {matches_to_show} of {len(perfect_matches)} perfect match cases")
+    
+    for i, comparison in enumerate(perfect_matches[:matches_to_show]):
         msg_id = comparison['message_id']
         message = message_index.get(msg_id, {})
         rule_triples = rule_index.get(msg_id, [])
@@ -1083,8 +1130,26 @@ def show_low_confidence_cases(comparisons, message_index, rule_index, llm_index,
     
     st.write(f"Found {len(low_confidence_cases)} messages with low confidence extractions (<0.6)")
     
+    # Add controls for viewing more low confidence cases
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        max_low_conf = st.selectbox(
+            "Low confidence cases to show", 
+            [3, 10, 25, len(low_confidence_cases)],
+            index=0,
+            format_func=lambda x: f"Show {x}" if x < len(low_confidence_cases) else f"Show all {x}",
+            key="low_conf_count"
+        )
+    
+    with col2:
+        if st.button("🔄 Refresh Low Conf", key="refresh_low_conf"):
+            st.rerun()
+    
     # Show examples
-    for i, case in enumerate(low_confidence_cases[:3]):
+    cases_to_show = min(max_low_conf, len(low_confidence_cases))
+    st.info(f"Showing {cases_to_show} of {len(low_confidence_cases)} low confidence cases")
+    
+    for i, case in enumerate(low_confidence_cases[:cases_to_show]):
         msg_id = case['message_id']
         message = message_index.get(msg_id, {})
         
@@ -1133,12 +1198,37 @@ def show_method_only_cases(comparisons, message_index, rule_index, llm_index, ha
         else:
             st.write(f"Found {len(rule_only_cases)} messages where only rule-based extracted triples")
             
-            for i, case in enumerate(rule_only_cases[:3]):
+            # Add controls for rule-only cases
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                max_rule_only = st.selectbox(
+                    "Rule-only cases to show", 
+                    [3, 10, 25, len(rule_only_cases)],
+                    index=0,
+                    format_func=lambda x: f"Show {x}" if x < len(rule_only_cases) else f"Show all {x}",
+                    key="rule_only_count"
+                )
+            
+            with col2:
+                if st.button("🔄 Refresh Rule-only", key="refresh_rule_only"):
+                    st.rerun()
+            
+            cases_to_show = min(max_rule_only, len(rule_only_cases))
+            st.info(f"Showing {cases_to_show} of {len(rule_only_cases)} rule-only cases")
+            
+            for i, case in enumerate(rule_only_cases[:cases_to_show]):
                 msg_id = case['message_id']
                 message = message_index.get(msg_id, {})
                 rule_triples = rule_index.get(msg_id, [])
                 
                 with st.expander(f"🟢 #{i+1} - {msg_id[:8]}... | {case['rule_based_count']} triples", expanded=i==0):
+                    
+                    # Debug for rule-only cases
+                    if st.checkbox(f"Show debug info for rule-only case #{i+1}", key=f"debug_rule_only_{i}"):
+                        st.write(f"**Debug - Message ID:** {msg_id}")
+                        st.write(f"**Debug - Rule triples found:** {len(rule_triples)}")
+                        st.write(f"**Debug - Message in index:** {msg_id in message_index}")
+                        st.write("---")
                     st.markdown("**📝 Message Content:**")
                     st.markdown(f"""
                     <div class="comparison-box">
@@ -1146,15 +1236,18 @@ def show_method_only_cases(comparisons, message_index, rule_index, llm_index, ha
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    st.markdown("**🟢 Rule-based Triples:**")
-                    for j, triple in enumerate(rule_triples):
-                        conf_class = get_confidence_class(triple['confidence'])
-                        st.markdown(f"""
-                        <div class="triple-box rule-based {conf_class}">
-                            {j+1}. {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
-                            <small>Confidence: {triple['confidence']:.2f}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
+                    st.markdown(f"**🟢 Rule-based Triples ({len(rule_triples)} total):**")
+                    if rule_triples:
+                        for j, triple in enumerate(rule_triples):
+                            conf_class = get_confidence_class(triple['confidence'])
+                            st.markdown(f"""
+                            <div class="triple-box rule-based {conf_class}">
+                                {j+1}. {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                                <small>Confidence: {triple['confidence']:.2f}</small>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.warning("No rule triples found despite case being in rule-only list!")
     
     with subtab2:
         if not has_llm:
@@ -1168,12 +1261,37 @@ def show_method_only_cases(comparisons, message_index, rule_index, llm_index, ha
         else:
             st.write(f"Found {len(llm_only_cases)} messages where only LLM extracted triples")
             
-            for i, case in enumerate(llm_only_cases[:3]):
+            # Add controls for LLM-only cases
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                max_llm_only = st.selectbox(
+                    "LLM-only cases to show", 
+                    [3, 10, 25, len(llm_only_cases)],
+                    index=0,
+                    format_func=lambda x: f"Show {x}" if x < len(llm_only_cases) else f"Show all {x}",
+                    key="llm_only_count"
+                )
+            
+            with col2:
+                if st.button("🔄 Refresh LLM-only", key="refresh_llm_only"):
+                    st.rerun()
+            
+            cases_to_show = min(max_llm_only, len(llm_only_cases))
+            st.info(f"Showing {cases_to_show} of {len(llm_only_cases)} LLM-only cases")
+            
+            for i, case in enumerate(llm_only_cases[:cases_to_show]):
                 msg_id = case['message_id']
                 message = message_index.get(msg_id, {})
                 llm_triples = llm_index.get(msg_id, [])
                 
                 with st.expander(f"🟣 #{i+1} - {msg_id[:8]}... | {case['llm_based_count']} triples", expanded=i==0):
+                    
+                    # Debug for LLM-only cases
+                    if st.checkbox(f"Show debug info for LLM-only case #{i+1}", key=f"debug_llm_only_{i}"):
+                        st.write(f"**Debug - Message ID:** {msg_id}")
+                        st.write(f"**Debug - LLM triples found:** {len(llm_triples)}")
+                        st.write(f"**Debug - Message in index:** {msg_id in message_index}")
+                        st.write("---")
                     st.markdown("**📝 Message Content:**")
                     st.markdown(f"""
                     <div class="comparison-box">
@@ -1181,15 +1299,18 @@ def show_method_only_cases(comparisons, message_index, rule_index, llm_index, ha
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    st.markdown("**🟣 LLM-based Triples:**")
-                    for j, triple in enumerate(llm_triples):
-                        conf_class = get_confidence_class(triple['confidence'])
-                        st.markdown(f"""
-                        <div class="triple-box llm-based {conf_class}">
-                            {j+1}. {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
-                            <small>Confidence: {triple['confidence']:.2f}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
+                    st.markdown(f"**🟣 LLM-based Triples ({len(llm_triples)} total):**")
+                    if llm_triples:
+                        for j, triple in enumerate(llm_triples):
+                            conf_class = get_confidence_class(triple['confidence'])
+                            st.markdown(f"""
+                            <div class="triple-box llm-based {conf_class}">
+                                {j+1}. {triple['subject']} → {triple['predicate']} → {triple['object']}<br>
+                                <small>Confidence: {triple['confidence']:.2f}</small>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.warning("No LLM triples found despite case being in LLM-only list!")
 
 if __name__ == "__main__":
     # Import numpy for statistics (with fallback)

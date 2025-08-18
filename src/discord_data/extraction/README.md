@@ -184,9 +184,10 @@ Find problematic extractions:
 ```
 1. Go to "Quality Analysis"
 2. Check "High Disagreements" tab
-3. Review full message content and all extracted triples
-4. Compare side-by-side to understand method differences
-5. Use other tabs for low confidence and method-only cases
+3. Use dropdown to show more cases (5, 10, 25, 50, or all)
+4. Review full message content and all extracted triples
+5. Compare side-by-side to understand method differences
+6. Use other tabs for low confidence and method-only cases
 ```
 
 ### 4. **Confidence Analysis**
