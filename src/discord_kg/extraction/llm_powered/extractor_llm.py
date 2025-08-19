@@ -11,6 +11,8 @@ import re
 import datetime
 import os
 import time
+import yaml
+from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any, Union
 from dataclasses import dataclass, asdict
 import logging
@@ -173,131 +175,83 @@ class LLMClient:
 
 
 class PromptTemplates:
-    """LLM prompt templates for different message types."""
+    """LLM prompt templates for different message types loaded from YAML configuration."""
     
-    @staticmethod
-    def get_system_prompt() -> str:
-        return """You are an expert at extracting structured knowledge triples from Discord financial trading conversations.
-
-Your task is to extract triples in the format [subject, predicate, object] from messages.
-
-Rules:
-1. Extract factual relationships only
-2. Use clear, consistent predicates like: asks_about, recommends, alerts, discusses_strategy, reports_return, analyzes, provides_info
-3. Keep objects concise but informative
-4. Subject should be the author username or message_id for Q&A links
-5. Return ONLY a valid JSON array of triples, no other text
-6. Each triple should be: ["subject", "predicate", "object"]
-
-Example output:
-[
-  ["user123", "asks_about", "covered call strategies"],
-  ["expert456", "recommends", "wheel strategy for AAPL"],
-  ["bot", "alerts", "FOMC meeting today"]
-]"""
-
-    @staticmethod
-    def get_question_prompt(messages: List[Dict]) -> str:
+    def __init__(self, config_path: str = None):
+        """Initialize prompt templates from YAML configuration."""
+        if config_path is None:
+            config_path = Path(__file__).parent / "prompts.yaml"
+        
+        self.config_path = Path(config_path)
+        self.config = self._load_config()
+        
+    def _load_config(self) -> Dict[str, Any]:
+        """Load prompt configuration from YAML file."""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                logger.info(f"Loaded prompt templates from {self.config_path}")
+                return config
+        except FileNotFoundError:
+            logger.error(f"Prompt configuration file not found: {self.config_path}")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing YAML configuration: {e}")
+            raise
+    
+    def get_system_prompt(self) -> str:
+        """Get the system prompt for LLM extraction."""
+        return self.config['system']['content']
+    
+    def get_question_prompt(self, messages: List[Dict]) -> str:
         """Prompt for extracting question triples."""
         message_text = "\n".join([f"Author: {m['author']}, Text: {m['clean_text']}" for m in messages])
-        
-        return f"""Extract question triples from these Discord messages. Focus on what users are asking about.
-
-Use predicate "asks_about" and extract the main topic/subject of each question.
-
-Messages:
-{message_text}
-
-Extract triples as JSON array:"""
-
-    @staticmethod
-    def get_strategy_prompt(messages: List[Dict]) -> str:
+        template = self.config['templates']['question']['instruction']
+        return template.format(message_text=message_text)
+    
+    def get_strategy_prompt(self, messages: List[Dict]) -> str:
         """Prompt for extracting strategy discussion triples."""
         message_text = "\n".join([f"Author: {m['author']}, Text: {m['clean_text']}" for m in messages])
-        
-        return f"""Extract strategy and recommendation triples from these trading/financial messages.
-
-Use predicates like:
-- "recommends" for specific strategy recommendations
-- "discusses_strategy" for general strategy talk
-- "mentions_asset" for asset discussions
-
-Focus on trading strategies, investment approaches, and financial recommendations.
-
-Messages:
-{message_text}
-
-Extract triples as JSON array:"""
-
-    @staticmethod
-    def get_analysis_prompt(messages: List[Dict]) -> str:
+        template = self.config['templates']['strategy']['instruction']
+        return template.format(message_text=message_text)
+    
+    def get_analysis_prompt(self, messages: List[Dict]) -> str:
         """Prompt for extracting analysis triples."""
         message_text = "\n".join([f"Author: {m['author']}, Text: {m['clean_text']}" for m in messages])
-        
-        return f"""Extract analysis and opinion triples from these financial messages.
-
-Use predicates like:
-- "analyzes" for market/asset analysis
-- "provides_analysis" for general analysis
-- "shares_opinion" for opinions and views
-
-Focus on market analysis, asset outlooks, and financial opinions.
-
-Messages:
-{message_text}
-
-Extract triples as JSON array:"""
-
-    @staticmethod
-    def get_answer_prompt(messages: List[Dict]) -> str:
+        template = self.config['templates']['analysis']['instruction']
+        return template.format(message_text=message_text)
+    
+    def get_answer_prompt(self, messages: List[Dict]) -> str:
         """Prompt for extracting answer/info triples."""
         message_text = "\n".join([f"Author: {m['author']}, Text: {m['clean_text']}" for m in messages])
-        
-        return f"""Extract information-providing triples from these answer messages.
-
-Use predicates like:
-- "provides_info" for informational content
-- "explains" for explanations
-- "suggests" for suggestions
-
-Focus on helpful information, explanations, and advice being shared.
-
-Messages:
-{message_text}
-
-Extract triples as JSON array:"""
-
-    @staticmethod
-    def get_qa_linking_prompt(questions: List[Dict], answers: List[Dict]) -> str:
+        template = self.config['templates']['answer']['instruction']
+        return template.format(message_text=message_text)
+    
+    def get_qa_linking_prompt(self, questions: List[Dict], answers: List[Dict]) -> str:
         """Prompt for linking questions to answers."""
         q_text = "\n".join([f"Q{i}: {q['message_id']} - {q['author']}: {q['clean_text']}" 
                            for i, q in enumerate(questions)])
         a_text = "\n".join([f"A{i}: {a['message_id']} - {a['author']}: {a['clean_text']}" 
                            for i, a in enumerate(answers)])
-        
-        return f"""Link questions to their corresponding answers by analyzing content similarity and context.
-
-Questions:
-{q_text}
-
-Answers:
-{a_text}
-
-Create triples linking questions to answers using predicate "answered_by".
-Format: [question_message_id, "answered_by", answer_message_id]
-
-Only create links for clear question-answer pairs.
-
-Extract triples as JSON array:"""
+        template = self.config['templates']['qa_linking']['instruction']
+        return template.format(q_text=q_text, a_text=a_text)
+    
+    def get_confidence_score(self, message_type: str) -> float:
+        """Get confidence score for a message type from configuration."""
+        return self.config.get('config', {}).get('confidence_scores', {}).get(message_type, 0.75)
+    
+    def get_predicates(self, message_type: str) -> List[str]:
+        """Get expected predicates for a message type from configuration."""
+        return self.config.get('config', {}).get('predicates', {}).get(message_type, [])
 
 
 class LLMSegmentProcessor:
     """Processes message segments using LLM APIs with batching for efficiency."""
     
-    def __init__(self, llm_client: LLMClient, batch_size: int = 20):
+    def __init__(self, llm_client: LLMClient, batch_size: int = 20, config_path: str = None):
         self.llm_client = llm_client
         self.batch_size = batch_size
-        self.templates = PromptTemplates()
+        self.templates = PromptTemplates(config_path)
         
         # Simple rule-based fallback for some types
         self._init_rule_patterns()
@@ -386,7 +340,7 @@ class LLMSegmentProcessor:
                                     message_id=msg['message_id'],
                                     segment_id=msg['segment_id'],
                                     timestamp=msg['timestamp'],
-                                    confidence=0.85  # High confidence for LLM extraction
+                                    confidence=self.templates.get_confidence_score('question')
                                 )
                                 triples.append(triple)
                                 break
@@ -421,7 +375,7 @@ class LLMSegmentProcessor:
                                     message_id=msg['message_id'],
                                     segment_id=msg['segment_id'],
                                     timestamp=msg['timestamp'],
-                                    confidence=0.88
+                                    confidence=self.templates.get_confidence_score('strategy')
                                 )
                                 triples.append(triple)
                                 break
@@ -455,7 +409,7 @@ class LLMSegmentProcessor:
                                     message_id=msg['message_id'],
                                     segment_id=msg['segment_id'],
                                     timestamp=msg['timestamp'],
-                                    confidence=0.82
+                                    confidence=self.templates.get_confidence_score('analysis')
                                 )
                                 triples.append(triple)
                                 break
@@ -489,7 +443,7 @@ class LLMSegmentProcessor:
                                     message_id=msg['message_id'],
                                     segment_id=msg['segment_id'],
                                     timestamp=msg['timestamp'],
-                                    confidence=0.80
+                                    confidence=self.templates.get_confidence_score('answer')
                                 )
                                 triples.append(triple)
                                 break
@@ -513,7 +467,7 @@ class LLMSegmentProcessor:
                 message_id=msg['message_id'],
                 segment_id=msg['segment_id'],
                 timestamp=msg['timestamp'],
-                confidence=0.60
+                confidence=self.templates.get_confidence_score('discussion')
             )
             triples.append(triple)
             
@@ -537,7 +491,7 @@ class LLMSegmentProcessor:
                     message_id=msg['message_id'],
                     segment_id=msg['segment_id'],
                     timestamp=msg['timestamp'],
-                    confidence=0.85
+                    confidence=self.templates.get_confidence_score('alert')
                 )
                 triples.append(triple)
                 
@@ -562,7 +516,7 @@ class LLMSegmentProcessor:
                         message_id=msg['message_id'],
                         segment_id=msg['segment_id'],
                         timestamp=msg['timestamp'],
-                        confidence=0.90  # High confidence for percentage extraction
+                        confidence=self.templates.get_confidence_score('performance')
                     )
                     triples.append(triple)
                     
@@ -597,7 +551,7 @@ class LLMSegmentProcessor:
                             message_id=f"{triple_data[0]}_llm_link_{triple_data[2]}",
                             segment_id=segment_id,
                             timestamp=datetime.datetime.now().isoformat(),
-                            confidence=0.75  # Medium confidence for LLM Q&A linking
+                            confidence=self.templates.get_confidence_score('qa_linking')
                         )
                         triples.append(triple)
             except json.JSONDecodeError:
@@ -609,7 +563,7 @@ class LLMSegmentProcessor:
 class LLMTripleExtractor:
     """Main LLM-powered extraction coordinator."""
     
-    def __init__(self, provider: str = "openai", model: str = None, batch_size: int = 20):
+    def __init__(self, provider: str = "openai", model: str = None, batch_size: int = 20, config_path: str = None):
         """
         Initialize LLM extractor.
         
@@ -617,11 +571,14 @@ class LLMTripleExtractor:
             provider: "openai" or "claude"  
             model: Specific model name (defaults to gpt-3.5-turbo or claude-3-haiku)
             batch_size: Messages per LLM request (10-20 for accuracy, 50-100 for efficiency)
+            config_path: Path to YAML prompt configuration file
         """
         self.llm_client = LLMClient(provider, model)
-        self.processor = LLMSegmentProcessor(self.llm_client, batch_size)
+        self.processor = LLMSegmentProcessor(self.llm_client, batch_size, config_path)
         
         logger.info(f"Initialized LLM extractor: {provider} with batch_size={batch_size}")
+        if config_path:
+            logger.info(f"Using custom prompt config: {config_path}")
     
     def extract_triples(self, messages: List[Dict[str, Any]]) -> List[Triple]:
         """Extract triples using LLM APIs with segment-based processing."""
@@ -712,6 +669,7 @@ if __name__ == "__main__":
     parser.add_argument('--model', help='Specific model name')
     parser.add_argument('--batch-size', type=int, default=20, 
                        help='Messages per LLM request (default: 20)')
+    parser.add_argument('--config', help='Path to YAML prompt configuration file')
     
     args = parser.parse_args()
     
@@ -727,7 +685,8 @@ if __name__ == "__main__":
     extractor = LLMTripleExtractor(
         provider=args.provider,
         model=args.model,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        config_path=args.config
     )
     
     print(f"LLM Step 3 Processing: {args.input_file} -> {args.output_file}")

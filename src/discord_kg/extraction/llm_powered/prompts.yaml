@@ -1,0 +1,127 @@
+# LLM Prompt Templates for Discord Knowledge Graph Extraction
+# These prompts are used to extract structured triples from Discord financial trading conversations
+
+system:
+  content: |
+    You are an expert at extracting structured knowledge triples from Discord financial trading conversations.
+
+    Your task is to extract triples in the format [subject, predicate, object] from messages.
+
+    Rules:
+    1. Extract factual relationships only
+    2. Use clear, consistent predicates like: asks_about, recommends, alerts, discusses_strategy, reports_return, analyzes, provides_info
+    3. Keep objects concise but informative
+    4. Subject should be the author username or message_id for Q&A links
+    5. Return ONLY a valid JSON array of triples, no other text
+    6. Each triple should be: ["subject", "predicate", "object"]
+
+    Example output:
+    [
+      ["user123", "asks_about", "covered call strategies"],
+      ["expert456", "recommends", "wheel strategy for AAPL"],
+      ["bot", "alerts", "FOMC meeting today"]
+    ]
+
+templates:
+  question:
+    description: "Extract question triples from Discord messages focusing on what users are asking about"
+    instruction: |
+      Extract question triples from these Discord messages. Focus on what users are asking about.
+
+      Use predicate "asks_about" and extract the main topic/subject of each question.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+    
+  strategy:
+    description: "Extract strategy discussion triples from trading/financial messages"
+    instruction: |
+      Extract strategy and recommendation triples from these trading/financial messages.
+
+      Use predicates like:
+      - "recommends" for specific strategy recommendations
+      - "discusses_strategy" for general strategy talk
+      - "mentions_asset" for asset discussions
+
+      Focus on trading strategies, investment approaches, and financial recommendations.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+
+  analysis:
+    description: "Extract analysis triples from financial messages"
+    instruction: |
+      Extract analysis and opinion triples from these financial messages.
+
+      Use predicates like:
+      - "analyzes" for market/asset analysis
+      - "provides_analysis" for general analysis
+      - "shares_opinion" for opinions and views
+
+      Focus on market analysis, asset outlooks, and financial opinions.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+
+  answer:
+    description: "Extract answer/info triples from answer messages"
+    instruction: |
+      Extract information-providing triples from these answer messages.
+
+      Use predicates like:
+      - "provides_info" for informational content
+      - "explains" for explanations
+      - "suggests" for suggestions
+
+      Focus on helpful information, explanations, and advice being shared.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+
+  qa_linking:
+    description: "Link questions to their corresponding answers by analyzing content similarity and context"
+    instruction: |
+      Link questions to their corresponding answers by analyzing content similarity and context.
+
+      Questions:
+      {q_text}
+
+      Answers:
+      {a_text}
+
+      Create triples linking questions to answers using predicate "answered_by".
+      Format: [question_message_id, "answered_by", answer_message_id]
+
+      Only create links for clear question-answer pairs.
+
+      Extract triples as JSON array:
+
+# Configuration settings
+config:
+  confidence_scores:
+    question: 0.85
+    strategy: 0.88
+    analysis: 0.82
+    answer: 0.80
+    qa_linking: 0.75
+    discussion: 0.60
+    alert: 0.85
+    performance: 0.90
+  
+  predicates:
+    question: ["asks_about"]
+    strategy: ["recommends", "discusses_strategy", "mentions_asset"]
+    analysis: ["analyzes", "provides_analysis", "shares_opinion"]
+    answer: ["provides_info", "explains", "suggests"]
+    qa_linking: ["answered_by"]
+    discussion: ["discusses"]
+    alert: ["alerts"]
+    performance: ["reports_return"]
