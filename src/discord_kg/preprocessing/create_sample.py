@@ -9,7 +9,7 @@ import argparse
 import random
 
 
-def create_sample(input_file: str, output_file: str, sample_size: int = 1000, random_sample: bool = False):
+def create_sample(input_file: str, output_file: str, sample_size: int = 1000, random_sample: bool = False, last_messages: bool = False):
     """Create a sample from Discord export JSON"""
     
     print(f"Loading {input_file}...")
@@ -28,6 +28,9 @@ def create_sample(input_file: str, output_file: str, sample_size: int = 1000, ra
         if random_sample:
             print(f"Creating random sample of {sample_size} messages...")
             sample_messages = random.sample(original_messages, sample_size)
+        elif last_messages:
+            print(f"Creating last {sample_size} messages...")
+            sample_messages = original_messages[-sample_size:]
         else:
             print(f"Creating first {sample_size} messages...")
             sample_messages = original_messages[:sample_size]
@@ -49,10 +52,11 @@ def main():
     parser.add_argument("--output", "-o", default="sample.json", help="Output sample file")
     parser.add_argument("--size", "-s", type=int, default=1000, help="Number of messages to sample")
     parser.add_argument("--random", "-r", action="store_true", help="Use random sampling instead of first N messages")
+    parser.add_argument("--last", "-l", action="store_true", help="Use last N messages instead of first N messages")
     
     args = parser.parse_args()
     
-    create_sample(args.input_file, args.output, args.size, args.random)
+    create_sample(args.input_file, args.output, args.size, args.random, args.last)
 
 
 if __name__ == "__main__":
