@@ -1,8 +1,12 @@
-# LLM-Powered Step 3 Extraction Dependencies
+# LangGraph-based Discord Knowledge Graph Extraction Dependencies
 
 # Core LLM APIs
 openai>=1.0.0
 anthropic>=0.8.0
+
+# LangGraph workflow orchestration
+langgraph>=0.0.40
+langchain-core>=0.1.0
 
 # Data processing
 pandas>=1.3.0
@@ -21,3 +25,7 @@ boto3>=1.26.0
 
 # Graph database (optional)  
 neo4j>=5.0.0
+
+# Additional dependencies for the new architecture
+typing-extensions>=4.0.0  # For enhanced type hints
+dataclasses>=0.6  # Python 3.6 compatibility for dataclasses
