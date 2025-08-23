@@ -25,11 +25,43 @@ try:
     from .workflow import ExtractionWorkflow, run_extraction_pipeline
     from .config import ConfigManager
     from .workflow_state import NumpyEncoder
+    from .enable_recording import enable_recording_in_extractor_langgraph
+    from .llm_recorder import get_call_stats, is_recording_enabled
 except ImportError:
     # Fall back to direct imports (when running as script)
     from workflow import ExtractionWorkflow, run_extraction_pipeline
     from config import ConfigManager
     from workflow_state import NumpyEncoder
+    from enable_recording import enable_recording_in_extractor_langgraph
+    from llm_recorder import get_call_stats, is_recording_enabled
+
+
+def setup_recording_if_enabled() -> Optional[str]:
+    """Setup LLM call recording if enabled via environment variable."""
+    
+    # Check if recording is enabled
+    recording_enabled = os.getenv("ENABLE_LLM_RECORDING", "false").lower() in ["true", "1", "yes"]
+    
+    if not recording_enabled:
+        return None
+    
+    # Get experiment name from environment or generate default
+    experiment_name = os.getenv("LLM_EXPERIMENT_NAME")
+    if not experiment_name:
+        from datetime import datetime
+        experiment_name = f"extraction_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    try:
+        # Enable recording
+        success = enable_recording_in_extractor_langgraph(experiment_name)
+        if success:
+            return experiment_name
+        else:
+            print("⚠️  Failed to enable LLM recording")
+            return None
+    except Exception as e:
+        print(f"⚠️  Error setting up LLM recording: {e}")
+        return None
 
 
 def setup_logging(level: str = "INFO", log_file: Optional[str] = None) -> None:
@@ -171,6 +203,19 @@ def print_processing_summary(result: Dict[str, Any]) -> None:
     print(f"   • Total tokens: {cost.get('total_tokens', 0):,}")
     print(f"   • Cost per triple: ${cost.get('cost_per_triple', 0):.4f}")
     
+    # Add recording statistics if recording is enabled
+    try:
+        if is_recording_enabled():
+            recording_stats = get_call_stats()
+            if recording_stats.get('total_calls', 0) > 0:
+                print(f"\n📊 Recording Statistics:")
+                print(f"   • LLM calls recorded: {recording_stats.get('total_calls', 0)}")
+                print(f"   • Recording success rate: {recording_stats.get('success_rate', 0):.1f}%")
+                print(f"   • Avg call duration: {recording_stats.get('avg_duration_seconds', 0):.3f}s")
+                print(f"   • Data stored in: bin/llm_evaluation/llm_calls.db")
+    except Exception:
+        pass  # Silently skip if recording modules not available
+    
     if result.get("errors"):
         print(f"\n⚠️  Errors encountered ({len(result['errors'])}):")
         for error in result["errors"][-3:]:  # Show last 3 errors
@@ -193,10 +238,14 @@ Examples:
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --model claude-3-sonnet-20240229 --log-level DEBUG
 
 Environment Variables:
-  OPENAI_API_KEY      - Required for OpenAI provider
-  ANTHROPIC_API_KEY   - Required for Claude provider
-  OPENAI_MODEL        - Override default OpenAI model
-  ANTHROPIC_MODEL     - Override default Claude model
+  OPENAI_API_KEY        - Required for OpenAI provider
+  ANTHROPIC_API_KEY     - Required for Claude provider
+  OPENAI_MODEL          - Override default OpenAI model
+  ANTHROPIC_MODEL       - Override default Claude model
+  
+  LLM Recording:
+  ENABLE_LLM_RECORDING  - Set to 'true' to enable comprehensive LLM call recording
+  LLM_EXPERIMENT_NAME   - Name for the recording experiment (optional)
         """
     )
     
@@ -263,6 +312,11 @@ Environment Variables:
     except Exception as e:
         print(f"❌ Configuration error: {e}")
         return 1
+    
+    # Setup LLM call recording if enabled
+    recording_experiment = setup_recording_if_enabled()
+    if recording_experiment and not args.quiet:
+        print(f"📊 LLM recording enabled for experiment: {recording_experiment}")
     
     # Exit if validation only
     if args.validate_only:

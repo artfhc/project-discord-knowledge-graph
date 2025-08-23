@@ -13,6 +13,9 @@ claude.md
 *.json
 *.jsonl
 
+# database
+*.db
+
 # C extensions
 *.so
 
