@@ -57,6 +57,7 @@ class LLMCallRecord:
     parsing_success: bool = True
     parsing_error: Optional[str] = None
     triples_count: int = 0
+    reasoning: Optional[str] = None
     
     # Performance metrics
     duration_seconds: float = 0.0
@@ -121,6 +122,7 @@ class LLMCallStorage:
                     parsing_success BOOLEAN DEFAULT TRUE,
                     parsing_error TEXT,
                     triples_count INTEGER DEFAULT 0,
+                    reasoning TEXT,
                     
                     -- Performance metrics
                     duration_seconds REAL,
@@ -149,6 +151,11 @@ class LLMCallStorage:
                 
             try:
                 conn.execute('ALTER TABLE llm_calls ADD COLUMN triples_count INTEGER DEFAULT 0')
+            except:
+                pass  # Column already exists
+                
+            try:
+                conn.execute('ALTER TABLE llm_calls ADD COLUMN reasoning TEXT')
             except:
                 pass  # Column already exists
             
@@ -382,3 +389,29 @@ def export_calls_to_csv(filename: str, **filters):
         logger.error("pandas not installed - cannot export to CSV")
     except Exception as e:
         logger.error(f"Failed to export calls to CSV: {e}")
+
+
+def update_latest_record_reasoning(reasoning: str):
+    """Update the most recent record with reasoning information."""
+    if not _recording_enabled:
+        return
+    
+    try:
+        storage = get_storage()
+        with sqlite3.connect(storage.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE llm_calls 
+                SET reasoning = ?
+                WHERE call_id = (
+                    SELECT call_id 
+                    FROM llm_calls 
+                    ORDER BY timestamp DESC 
+                    LIMIT 1
+                )
+            """, (reasoning,))
+            conn.commit()
+    except sqlite3.Error as e:
+        logger.error(f"Database error updating reasoning: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error updating reasoning: {e}")

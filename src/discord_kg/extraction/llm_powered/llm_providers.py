@@ -21,7 +21,9 @@ except ImportError:
     from config import LLMConfig, LLMProvider
     from workflow_state import ProcessingMetrics
 
-logger = logging.getLogger(__name__)
+def get_logger():
+    """Get logger safely, creating it if needed."""
+    return logging.getLogger(__name__ or 'llm_providers')
 
 
 @dataclass
@@ -35,6 +37,7 @@ class LLMResponse:
     model: str
     provider: str
     error: Optional[str] = None
+    reasoning: Optional[str] = None
     
     @property
     def success(self) -> bool:
@@ -104,7 +107,7 @@ class BaseLLMProvider(ABC):
                 self.total_cost += cost
                 self.total_tokens += total_tokens
                 
-                logger.debug(
+                get_logger().debug(
                     f"Request {self.request_count}: {input_tokens}+{output_tokens} tokens, "
                     f"${cost:.4f}, attempt {attempt + 1}"
                 )
@@ -121,7 +124,7 @@ class BaseLLMProvider(ABC):
                 
             except Exception as e:
                 last_error = str(e)
-                logger.warning(f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                get_logger().warning(f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
                 
                 if attempt < max_retries:
                     # Exponential backoff
@@ -132,7 +135,7 @@ class BaseLLMProvider(ABC):
                     break
         
         # All retries failed
-        logger.error(f"All API call attempts failed. Last error: {last_error}")
+        get_logger().error(f"All API call attempts failed. Last error: {last_error}")
         return LLMResponse(
             content="[]",
             input_tokens=0,
@@ -182,7 +185,7 @@ class OpenAIProvider(BaseLLMProvider):
             self.client = openai.OpenAI(api_key=api_key)
             model_name = self.config.model or self.config.default_model
             
-            logger.info(f"Initialized OpenAI client with model: {model_name}")
+            get_logger().info(f"Initialized OpenAI client with model: {model_name}")
             
         except ImportError:
             raise ImportError("OpenAI library not installed. Run: pip install openai")
@@ -224,7 +227,7 @@ class ClaudeProvider(BaseLLMProvider):
             self.client = anthropic.Anthropic(api_key=api_key)
             model_name = self.config.model or self.config.default_model
             
-            logger.info(f"Initialized Claude client with model: {model_name}")
+            get_logger().info(f"Initialized Claude client with model: {model_name}")
             
         except ImportError:
             raise ImportError("Anthropic library not installed. Run: pip install anthropic")
@@ -314,21 +317,21 @@ class TripleExtractor:
         response = self.provider.extract_triples(system_prompt, user_prompt)
         
         if not response.success:
-            logger.error(f"Triple extraction failed: {response.error}")
+            get_logger().error(f"Triple extraction failed: {response.error}")
             return []
         
         # Parse JSON response
         try:
             triples = json.loads(response.content)
             if not isinstance(triples, list):
-                logger.warning("LLM returned non-list response")
+                get_logger().warning("LLM returned non-list response")
                 return []
             
             return triples
         
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse LLM response as JSON: {e}")
-            logger.debug(f"Response content: {response.content[:200]}")
+            get_logger().warning(f"Failed to parse LLM response as JSON: {e}")
+            get_logger().debug(f"Response content: {response.content[:200]}")
             return []
     
     def extract_qa_links(
@@ -370,12 +373,58 @@ class TripleExtractor:
         response = self.provider.extract_triples(system_prompt, user_prompt)
         
         if not response.success:
-            logger.error(f"Q&A linking failed: {response.error}")
+            get_logger().error(f"Q&A linking failed: {response.error}")
             return []
         
-        # Parse and validate links
+        # Parse and validate links with reasoning extraction
         try:
-            links = json.loads(response.content)
+            content = response.content
+            
+            # Extract JSON between markers
+            json_start = content.find("JSON_START")
+            json_end = content.find("JSON_END")
+            
+            if json_start != -1 and json_end != -1:
+                # Extract JSON content
+                json_content = content[json_start + len("JSON_START"):json_end].strip()
+                links = json.loads(json_content)
+                
+                # Extract reasoning if present
+                reasoning_start = content.find("REASONING:")
+                reasoning = ""
+                if reasoning_start != -1:
+                    reasoning = content[reasoning_start + len("REASONING:"):].strip()
+                
+                # Store reasoning in response object for recording
+                if reasoning and hasattr(response, '__dict__'):
+                    response.reasoning = reasoning
+                    
+                    # Also try to update the most recent database record with reasoning
+                    try:
+                        # Try relative import first
+                        try:
+                            from .llm_recorder import update_latest_record_reasoning
+                        except ImportError:
+                            # Fall back to direct import
+                            from llm_recorder import update_latest_record_reasoning
+                        
+                        print(f"[DEBUG] Updating database with reasoning ({len(reasoning)} chars)")
+                        update_latest_record_reasoning(reasoning)
+                        print(f"[DEBUG] Database update completed")
+                    except ImportError as e:
+                        print(f"[DEBUG] Could not import update_latest_record_reasoning: {e}")
+                    except Exception as e:
+                        print(f"[DEBUG] Error updating reasoning: {e}")
+                
+                # Log first part of reasoning for debugging
+                if reasoning:
+                    get_logger().info(f"Q&A linking reasoning extracted: {len(reasoning)} characters")
+                    
+            else:
+                # Fallback to old parsing method for backward compatibility
+                get_logger().warning("Q&A linking response missing JSON markers, trying direct JSON parse")
+                links = json.loads(content)
+            
             if not isinstance(links, list):
                 return []
             
@@ -391,5 +440,7 @@ class TripleExtractor:
             return valid_links
         
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse Q&A linking response as JSON: {e}")
+            get_logger().warning(f"Failed to parse Q&A linking response as JSON: {e}")
+            # Log the raw content to help debug parsing issues
+            get_logger().debug(f"Raw Q&A linking response: {response.content[:500]}...")
             return []

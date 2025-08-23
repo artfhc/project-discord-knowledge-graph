@@ -98,11 +98,30 @@ def patch_llm_providers_with_recording():
                         record.success = response.success
                         record.error_message = response.error
                         
+                        # Capture reasoning if present (especially for Q&A linking)
+                        if hasattr(response, 'reasoning') and response.reasoning:
+                            record.reasoning = response.reasoning
+                        
                         # Try to parse triples from the response and track parsing status
                         if response.success:
                             try:
                                 import json
-                                parsed_triples = json.loads(response.content)
+                                content = response.content
+                                
+                                # Handle structured Q&A linking format with JSON markers
+                                if "JSON_START" in content and "JSON_END" in content:
+                                    json_start = content.find("JSON_START")
+                                    json_end = content.find("JSON_END")
+                                    if json_start != -1 and json_end != -1:
+                                        json_content = content[json_start + len("JSON_START"):json_end].strip()
+                                        parsed_triples = json.loads(json_content)
+                                    else:
+                                        # Fallback to direct parsing
+                                        parsed_triples = json.loads(content)
+                                else:
+                                    # Standard JSON parsing for other templates
+                                    parsed_triples = json.loads(content)
+                                
                                 if isinstance(parsed_triples, list):
                                     record.parsed_triples = parsed_triples
                                     record.triples_count = len(parsed_triples)

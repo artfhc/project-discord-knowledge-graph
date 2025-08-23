@@ -102,7 +102,17 @@ templates:
 
       Only create links for clear question-answer pairs.
 
-      Extract triples as JSON array:
+      IMPORTANT: Your response must follow this exact structure:
+
+      JSON_START
+      [
+        [question_id, "answered_by", answer_id],
+        [question_id, "answered_by", answer_id]
+      ]
+      JSON_END
+
+      REASONING:
+      Explain your reasoning for each link you created, including why you matched specific questions to answers and any patterns you identified.
 
   alert:
     description: "Extract alert triples from warning/notice messages"
