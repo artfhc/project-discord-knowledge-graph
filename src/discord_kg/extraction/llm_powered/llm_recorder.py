@@ -53,6 +53,11 @@ class LLMCallRecord:
     success: bool = True
     error_message: Optional[str] = None
     
+    # Parsing status
+    parsing_success: bool = True
+    parsing_error: Optional[str] = None
+    triples_count: int = 0
+    
     # Performance metrics
     duration_seconds: float = 0.0
     input_tokens: int = 0
@@ -112,6 +117,11 @@ class LLMCallStorage:
                     success BOOLEAN,
                     error_message TEXT,
                     
+                    -- Parsing status
+                    parsing_success BOOLEAN DEFAULT TRUE,
+                    parsing_error TEXT,
+                    triples_count INTEGER DEFAULT 0,
+                    
                     -- Performance metrics
                     duration_seconds REAL,
                     input_tokens INTEGER,
@@ -126,12 +136,29 @@ class LLMCallStorage:
                 )
             ''')
             
+            # Migrate existing database to add new columns if they don't exist
+            try:
+                conn.execute('ALTER TABLE llm_calls ADD COLUMN parsing_success BOOLEAN DEFAULT TRUE')
+            except:
+                pass  # Column already exists
+            
+            try:
+                conn.execute('ALTER TABLE llm_calls ADD COLUMN parsing_error TEXT')
+            except:
+                pass  # Column already exists
+                
+            try:
+                conn.execute('ALTER TABLE llm_calls ADD COLUMN triples_count INTEGER DEFAULT 0')
+            except:
+                pass  # Column already exists
+            
             # Create indexes for common queries
             conn.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON llm_calls(timestamp)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_provider ON llm_calls(provider)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_template_type ON llm_calls(template_type)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_experiment ON llm_calls(experiment_name)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_success ON llm_calls(success)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_parsing_success ON llm_calls(parsing_success)')
             
             conn.commit()
     

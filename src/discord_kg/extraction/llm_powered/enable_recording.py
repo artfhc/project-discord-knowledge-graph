@@ -98,19 +98,31 @@ def patch_llm_providers_with_recording():
                         record.success = response.success
                         record.error_message = response.error
                         
-                        # Try to parse triples from the response
+                        # Try to parse triples from the response and track parsing status
                         if response.success:
                             try:
                                 import json
                                 parsed_triples = json.loads(response.content)
                                 if isinstance(parsed_triples, list):
                                     record.parsed_triples = parsed_triples
+                                    record.triples_count = len(parsed_triples)
+                                    record.parsing_success = True
+                                    record.parsing_error = None
                                 else:
                                     record.parsed_triples = []
-                            except json.JSONDecodeError:
+                                    record.triples_count = 0
+                                    record.parsing_success = False
+                                    record.parsing_error = f"Response is not a list: {type(parsed_triples).__name__}"
+                            except json.JSONDecodeError as e:
                                 record.parsed_triples = []
+                                record.triples_count = 0
+                                record.parsing_success = False
+                                record.parsing_error = f"JSON decode error: {str(e)}"
                         else:
                             record.parsed_triples = []
+                            record.triples_count = 0
+                            record.parsing_success = False
+                            record.parsing_error = "LLM call failed"
                     
                     return response
                     
@@ -119,6 +131,9 @@ def patch_llm_providers_with_recording():
                     if record:
                         record.success = False
                         record.error_message = str(e)
+                        record.parsing_success = False
+                        record.parsing_error = f"Exception during LLM call: {str(e)}"
+                        record.triples_count = 0
                     
                     # Re-raise the exception to maintain original behavior
                     raise
