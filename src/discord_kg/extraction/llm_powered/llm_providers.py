@@ -268,7 +268,10 @@ class LLMProviderFactory:
         model: Optional[str] = None
     ) -> BaseLLMProvider:
         """Create provider from string name."""
-        from .config import ConfigManager
+        try:
+            from .config import ConfigManager
+        except ImportError:
+            from config import ConfigManager
         
         config_manager = ConfigManager()
         llm_config = config_manager.get_llm_config(provider_name, model)

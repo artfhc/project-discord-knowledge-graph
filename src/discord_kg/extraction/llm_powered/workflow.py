@@ -52,7 +52,7 @@ def should_run_extraction(state: WorkflowState, message_type: str) -> bool:
 def routing_node(state: WorkflowState) -> Literal[
     "extract_question", "extract_strategy", "extract_analysis", 
     "extract_answer", "extract_alert", "extract_performance", 
-    "extract_discussion", "qa_linking"
+    "extract_discussion", "qa_linking", "aggregation"
 ]:
     """Route to the next extraction step based on available message types."""
     
@@ -76,7 +76,19 @@ def routing_node(state: WorkflowState) -> Literal[
         if msg_type not in processed_types:
             return f"extract_{msg_type}"
     
-    # All extractions done, move to Q&A linking
+    # All extractions done, check if we should do Q&A linking
+    # Check if we should skip Q&A linking
+    if state.get("should_skip_qa_linking", False):
+        return "aggregation"
+    
+    # Check if we have both questions and answers
+    if not has_questions_and_answers(state):
+        return "aggregation"
+    
+    # Check if Q&A linking is already done
+    if state.get("qa_linking_result") is not None:
+        return "aggregation"
+    
     return "qa_linking"
 
 
@@ -119,7 +131,6 @@ def create_extraction_workflow() -> StateGraph:
     workflow.add_node("extract_performance", extract_performance_node)
     workflow.add_node("extract_discussion", extract_discussion_node)
     
-    workflow.add_node("qa_routing", qa_routing_node)
     workflow.add_node("qa_linking", qa_linking_node)
     workflow.add_node("aggregation", aggregation_node)
     workflow.add_node("cost_tracking", cost_tracking_node)
@@ -127,11 +138,10 @@ def create_extraction_workflow() -> StateGraph:
     # Define workflow edges
     workflow.set_entry_point("preprocessing")
     workflow.add_edge("preprocessing", "classification")
-    workflow.add_edge("classification", "routing")
     
-    # Conditional routing from the routing node
+    # Conditional routing directly from classification
     workflow.add_conditional_edges(
-        "routing",
+        "classification",
         routing_node,
         {
             "extract_question": "extract_question",
@@ -141,11 +151,12 @@ def create_extraction_workflow() -> StateGraph:
             "extract_alert": "extract_alert",
             "extract_performance": "extract_performance",
             "extract_discussion": "extract_discussion",
-            "qa_linking": "qa_routing"
+            "qa_linking": "qa_linking",
+            "aggregation": "aggregation"
         }
     )
     
-    # All extraction nodes route back to routing for next type
+    # All extraction nodes route back to classification for next conditional routing
     extraction_nodes = [
         "extract_question", "extract_strategy", "extract_analysis",
         "extract_answer", "extract_alert", "extract_performance", 
@@ -153,18 +164,23 @@ def create_extraction_workflow() -> StateGraph:
     ]
     
     for node in extraction_nodes:
-        workflow.add_edge(node, "routing")
+        workflow.add_conditional_edges(
+            node,
+            routing_node,
+            {
+                "extract_question": "extract_question",
+                "extract_strategy": "extract_strategy",
+                "extract_analysis": "extract_analysis",
+                "extract_answer": "extract_answer",
+                "extract_alert": "extract_alert",
+                "extract_performance": "extract_performance",
+                "extract_discussion": "extract_discussion",
+                "qa_linking": "qa_linking",
+                "aggregation": "aggregation"
+            }
+        )
     
-    # Q&A routing
-    workflow.add_conditional_edges(
-        "qa_routing",
-        qa_routing_node,
-        {
-            "qa_linking": "qa_linking",
-            "aggregation": "aggregation"
-        }
-    )
-    
+    # Q&A linking goes directly to aggregation when complete
     workflow.add_edge("qa_linking", "aggregation")
     workflow.add_edge("aggregation", "cost_tracking")
     workflow.add_edge("cost_tracking", END)

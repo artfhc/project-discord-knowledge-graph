@@ -104,6 +104,57 @@ templates:
 
       Extract triples as JSON array:
 
+  alert:
+    description: "Extract alert triples from warning/notice messages"
+    instruction: |
+      Extract alert and notification triples from these warning/notice messages.
+
+      Use predicates like:
+      - "alerts" for warnings and notices
+      - "warns_about" for specific warnings
+      - "announces" for announcements
+
+      Focus on important notifications, market alerts, and warnings.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+
+  performance:
+    description: "Extract performance triples from trading results messages"
+    instruction: |
+      Extract performance and trading result triples from these messages.
+
+      Use predicates like:
+      - "reports_return" for specific returns/profits
+      - "reports_loss" for losses
+      - "shares_performance" for general performance updates
+
+      Focus on trading results, profit/loss reports, and performance metrics.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+
+  discussion:
+    description: "Extract discussion triples from general conversation messages"
+    instruction: |
+      Extract general discussion triples from these conversation messages.
+
+      Use predicates like:
+      - "discusses" for general topics
+      - "mentions" for brief mentions
+      - "talks_about" for casual discussion
+
+      Focus on general conversation topics and casual discussions.
+
+      Messages:
+      {message_text}
+
+      Extract triples as JSON array:
+
 # Configuration settings
 config:
   confidence_scores:
