@@ -17,6 +17,27 @@ import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+# Load environment variables from .env file if it exists
+def load_env_file():
+    """Load environment variables from .env file if it exists."""
+    env_file = Path(__file__).parent / '.env'
+    if env_file.exists():
+        try:
+            with open(env_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        # Remove quotes if present
+                        value = value.strip('"').strip("'")
+                        os.environ[key] = value
+            print(f"✅ Loaded environment variables from {env_file}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not load .env file: {e}")
+
+# Load .env file before imports
+load_env_file()
+
 # Add the current directory to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 

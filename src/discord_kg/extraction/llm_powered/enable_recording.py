@@ -13,40 +13,126 @@ def patch_llm_providers_with_recording():
     """
     Monkey-patch the existing LLM providers to include recording capabilities.
     
-    This allows enabling recording without changing the existing codebase.
+    This wraps BaseLLMProvider.extract_triples to add recording while maintaining
+    the existing interface and workflow compatibility.
     """
     try:
         # Import the recording modules
         from llm_recorder import record_llm_call
-        from recorded_llm_providers import RecordedLLMClient
         
         # Get the existing modules
         import llm_providers
+        from llm_providers import BaseLLMProvider
         
-        # Store original classes
-        original_llm_client = None
-        if hasattr(llm_providers, 'LLMClient'):
-            # For the original extractor_llm.py
-            original_llm_client = llm_providers.LLMClient
-            
-            # Replace with recorded version
-            llm_providers.LLMClient = RecordedLLMClient
-            
-        # Also patch any factory methods
-        if hasattr(llm_providers, 'LLMProviderFactory'):
-            original_create = llm_providers.LLMProviderFactory.create_from_string
-            
-            def create_recorded_provider(provider_name, model=None):
-                """Enhanced factory method that creates recorded providers."""
-                return RecordedLLMClient(provider_name, model)
-            
-            llm_providers.LLMProviderFactory.create_from_string = staticmethod(create_recorded_provider)
+        # Store the original extract_triples method
+        original_extract_triples = BaseLLMProvider.extract_triples
         
-        print("✅ LLM providers patched with recording capabilities")
+        def recorded_extract_triples(self, system_prompt: str, user_prompt: str, max_retries: int = 3):
+            """
+            Enhanced extract_triples method with integrated recording.
+            
+            This wrapper maintains the original interface while adding comprehensive
+            recording of all LLM calls made through the normal workflow.
+            """
+            # Extract context information from the prompts for better recording
+            template_type = "unknown"
+            workflow_step = "extraction"
+            
+            # Infer template type from user prompt content (which contains the specific instructions)
+            user_lower = user_prompt.lower()
+            if "question triples" in user_lower or "asks_about" in user_lower:
+                template_type = "question"
+            elif "strategy" in user_lower or "strategy triples" in user_lower:
+                template_type = "strategy"
+            elif "analysis triples" in user_lower or "analyzes" in user_lower:
+                template_type = "analysis"
+            elif "answer messages" in user_lower or "information-providing triples" in user_lower or "provides_info" in user_lower:
+                template_type = "answer"
+            elif "discussion triples" in user_lower or "conversation messages" in user_lower:
+                template_type = "discussion"
+            elif "performance triples" in user_lower or "reports_return" in user_lower:
+                template_type = "performance"
+            elif "alert triples" in user_lower or "alerts" in user_lower:
+                template_type = "alert"
+            elif "linking" in user_lower or "connect" in user_lower or "answered_by" in user_lower:
+                template_type = "qa_linking"
+                workflow_step = "qa_linking"
+            
+            # Create mock messages list for recording (since we don't have access to the original messages here)
+            # We'll extract what we can from the user prompt
+            mock_messages = [{
+                'message_id': f'extracted_from_prompt_{hash(user_prompt) % 10000}',
+                'author': 'extracted_context',
+                'text': user_prompt[:200] + '...' if len(user_prompt) > 200 else user_prompt,
+                'timestamp': None,
+                'segment_id': f'segment_{hash(system_prompt) % 1000}'
+            }]
+            
+            # Use recording context manager
+            with record_llm_call(
+                messages=mock_messages,
+                template_type=template_type,
+                template_name=f"{template_type}_template",
+                provider=self.config.provider.value,
+                model_name=self.config.model or self.config.default_model,
+                workflow_step=workflow_step,
+                node_name=f"extract_{template_type}_node",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                segment_id=mock_messages[0]['segment_id']
+            ) as record:
+                
+                try:
+                    # Call the original method
+                    response = original_extract_triples(self, system_prompt, user_prompt, max_retries)
+                    
+                    # Update recording with response data
+                    if record:
+                        record.input_tokens = response.input_tokens
+                        record.output_tokens = response.output_tokens
+                        record.total_tokens = response.total_tokens
+                        record.cost_usd = response.cost
+                        record.raw_response = response.content
+                        record.success = response.success
+                        record.error_message = response.error
+                        
+                        # Try to parse triples from the response
+                        if response.success:
+                            try:
+                                import json
+                                parsed_triples = json.loads(response.content)
+                                if isinstance(parsed_triples, list):
+                                    record.parsed_triples = parsed_triples
+                                else:
+                                    record.parsed_triples = []
+                            except json.JSONDecodeError:
+                                record.parsed_triples = []
+                        else:
+                            record.parsed_triples = []
+                    
+                    return response
+                    
+                except Exception as e:
+                    # Update record with error info
+                    if record:
+                        record.success = False
+                        record.error_message = str(e)
+                    
+                    # Re-raise the exception to maintain original behavior
+                    raise
+        
+        # Apply the monkey patch
+        BaseLLMProvider.extract_triples = recorded_extract_triples
+        
+        print("✅ BaseLLMProvider.extract_triples patched with recording capabilities")
         return True
         
     except Exception as e:
         print(f"❌ Failed to patch LLM providers: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -54,31 +140,39 @@ def enable_recording_in_extractor_langgraph(experiment_name: str = None):
     """
     Enable recording in the LangGraph extractor with minimal code changes.
     
+    This function:
+    1. Enables the recording system with the specified experiment name
+    2. Monkey-patches BaseLLMProvider.extract_triples to add recording
+    3. Maintains full compatibility with existing workflow
+    
     Usage:
         from enable_recording import enable_recording_in_extractor_langgraph
         enable_recording_in_extractor_langgraph("my_experiment")
         
-        # Now run your normal extraction
+        # Now run your normal extraction workflow
         result = workflow.run(messages)
     """
     try:
-        # Enable recording
+        # Enable recording system
         from llm_recorder import enable_recording
         enable_recording(experiment_name)
         
-        # Patch the providers
+        # Apply monkey patches to the actual interface being used
         patch_success = patch_llm_providers_with_recording()
         
         if patch_success:
-            print(f"🎉 LLM call recording enabled for experiment: {experiment_name}")
-            print("📊 All LLM calls will now be recorded to bin/llm_evaluation/")
+            print(f"🎉 LLM call recording enabled for experiment: {experiment_name or 'default'}")
+            print("📊 All LLM calls through BaseLLMProvider.extract_triples will be recorded")
+            print("📁 Recording data saved to: bin/llm_evaluation/llm_calls.db")
             return True
         else:
-            print("❌ Failed to enable recording")
+            print("❌ Failed to enable recording - check that llm_providers module is importable")
             return False
             
     except Exception as e:
         print(f"❌ Error enabling recording: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
