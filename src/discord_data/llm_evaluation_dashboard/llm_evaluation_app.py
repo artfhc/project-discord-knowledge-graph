@@ -53,6 +53,9 @@ def load_data(db_path: str):
             parsed_triples,
             success,
             error_message,
+            parsing_success,
+            parsing_error,
+            triples_count,
             duration_seconds,
             input_tokens,
             output_tokens,
@@ -178,11 +181,20 @@ def main():
             df = df[df['template_type'] == selected_template]
         
         # Success filter
-        success_filter = st.selectbox("Success Status", ['All', 'Successful Only', 'Failed Only'])
-        if success_filter == 'Successful Only':
-            df = df[df['success'] == 1]
-        elif success_filter == 'Failed Only':
-            df = df[df['success'] == 0]
+        col1, col2 = st.columns(2)
+        with col1:
+            success_filter = st.selectbox("API Success", ['All', 'Successful Only', 'Failed Only'])
+            if success_filter == 'Successful Only':
+                df = df[df['success'] == 1]
+            elif success_filter == 'Failed Only':
+                df = df[df['success'] == 0]
+        
+        with col2:
+            parsing_filter = st.selectbox("Parsing Success", ['All', 'Parsed Successfully', 'Parsing Failed'])
+            if parsing_filter == 'Parsed Successfully':
+                df = df[df['parsing_success'] == 1]
+            elif parsing_filter == 'Parsing Failed':
+                df = df[df['parsing_success'] == 0]
     
     # Main dashboard
     if len(df) == 0:
@@ -192,7 +204,7 @@ def main():
     # Overview metrics
     st.header("📈 Overview")
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         st.metric(
@@ -204,12 +216,21 @@ def main():
     with col2:
         success_rate = (df['success'].sum() / len(df) * 100) if len(df) > 0 else 0
         st.metric(
-            "Success Rate",
+            "API Success Rate",
             f"{success_rate:.1f}%",
             help="Percentage of successful API calls"
         )
     
     with col3:
+        # Add parsing success rate
+        parsing_success_rate = (df['parsing_success'].sum() / len(df) * 100) if len(df) > 0 else 0
+        st.metric(
+            "Parsing Success Rate",
+            f"{parsing_success_rate:.1f}%",
+            help="Percentage of successful JSON parsing"
+        )
+    
+    with col4:
         total_cost = df['cost_usd'].sum()
         st.metric(
             "Total Cost",
@@ -217,7 +238,7 @@ def main():
             help="Total cost of all API calls"
         )
     
-    with col4:
+    with col5:
         avg_duration = df['duration_seconds'].mean()
         st.metric(
             "Avg Duration",
@@ -225,7 +246,7 @@ def main():
             help="Average API call duration"
         )
     
-    with col5:
+    with col6:
         total_tokens = df['total_tokens'].sum()
         st.metric(
             "Total Tokens",
@@ -235,7 +256,7 @@ def main():
     
     # Tabs for different analyses
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 Call Analytics", 
+        "📊 Analytics", 
         "🎯 Template Performance", 
         "⚖️ Provider Comparison", 
         "💰 Cost Analysis", 
@@ -244,31 +265,57 @@ def main():
     ])
     
     with tab1:
-        st.header("📊 Call Analytics")
+        st.header("📊 Analytics")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            # Success rate by template type
+            # API Success rate by template type
             if 'template_type' in df.columns and not df['template_type'].isna().all():
                 success_by_template = df.groupby('template_type').agg({
                     'success': ['count', 'sum']
                 }).round(2)
-                success_by_template.columns = ['Total', 'Successful']
-                success_by_template['Success_Rate'] = (
-                    success_by_template['Successful'] / success_by_template['Total'] * 100
+                success_by_template.columns = ['Total', 'API_Successful']
+                success_by_template['API_Success_Rate'] = (
+                    success_by_template['API_Successful'] / success_by_template['Total'] * 100
                 )
                 
                 fig = px.bar(
                     success_by_template.reset_index(),
                     x='template_type',
-                    y='Success_Rate',
-                    title='Success Rate by Template Type',
-                    labels={'Success_Rate': 'Success Rate (%)', 'template_type': 'Template Type'}
+                    y='API_Success_Rate',
+                    title='API Success Rate by Template Type',
+                    labels={'API_Success_Rate': 'API Success Rate (%)', 'template_type': 'Template Type'},
+                    color_discrete_sequence=['#1f77b4']
                 )
                 st.plotly_chart(fig, use_container_width=True)
         
         with col2:
+            # Parsing Success rate by template type
+            if 'template_type' in df.columns and 'parsing_success' in df.columns:
+                parsing_by_template = df.groupby('template_type').agg({
+                    'parsing_success': ['count', 'sum']
+                }).round(2)
+                parsing_by_template.columns = ['Total', 'Parsing_Successful']
+                parsing_by_template['Parsing_Success_Rate'] = (
+                    parsing_by_template['Parsing_Successful'] / parsing_by_template['Total'] * 100
+                )
+                
+                fig = px.bar(
+                    parsing_by_template.reset_index(),
+                    x='template_type',
+                    y='Parsing_Success_Rate',
+                    title='Parsing Success Rate by Template Type',
+                    labels={'Parsing_Success_Rate': 'Parsing Success Rate (%)', 'template_type': 'Template Type'},
+                    color_discrete_sequence=['#ff7f0e']
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        
+        # Add a combined success analysis below
+        st.subheader("📈 Combined Analysis")
+        col3, col4 = st.columns(2)
+        
+        with col3:
             # Token distribution
             if 'total_tokens' in df.columns:
                 fig = px.histogram(
@@ -278,6 +325,27 @@ def main():
                     nbins=20,
                     labels={'total_tokens': 'Total Tokens', 'count': 'Number of Calls'}
                 )
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col4:
+            # Success vs Parsing Success scatter
+            if 'template_type' in df.columns and 'parsing_success' in df.columns:
+                combined_stats = df.groupby('template_type').agg({
+                    'success': 'mean',
+                    'parsing_success': 'mean'
+                }).round(3) * 100
+                combined_stats = combined_stats.reset_index()
+                
+                fig = px.scatter(
+                    combined_stats,
+                    x='success',
+                    y='parsing_success',
+                    text='template_type',
+                    title='API vs Parsing Success Rate by Template',
+                    labels={'success': 'API Success Rate (%)', 'parsing_success': 'Parsing Success Rate (%)'},
+                    size_max=60
+                )
+                fig.update_traces(textposition="top center")
                 st.plotly_chart(fig, use_container_width=True)
         
         # Duration vs tokens scatter
@@ -304,6 +372,7 @@ def main():
         if 'template_type' in df.columns and not df['template_type'].isna().all():
             template_stats = df.groupby('template_type').agg({
                 'success': ['count', 'sum'],
+                'parsing_success': 'sum',
                 'duration_seconds': 'mean',
                 'cost_usd': ['mean', 'sum'],
                 'total_tokens': 'mean',
@@ -311,11 +380,14 @@ def main():
             }).round(4)
             
             template_stats.columns = [
-                'Total_Calls', 'Successful_Calls', 'Avg_Duration', 
+                'Total_Calls', 'API_Successful', 'Parsing_Successful', 'Avg_Duration', 
                 'Avg_Cost', 'Total_Cost', 'Avg_Tokens', 'Avg_Triples'
             ]
-            template_stats['Success_Rate'] = (
-                template_stats['Successful_Calls'] / template_stats['Total_Calls'] * 100
+            template_stats['API_Success_Rate'] = (
+                template_stats['API_Successful'] / template_stats['Total_Calls'] * 100
+            ).round(2)
+            template_stats['Parsing_Success_Rate'] = (
+                template_stats['Parsing_Successful'] / template_stats['Total_Calls'] * 100
             ).round(2)
             
             st.subheader("Template Performance Summary")
@@ -350,6 +422,7 @@ def main():
         
         provider_stats = df.groupby('provider').agg({
             'success': ['count', 'sum'],
+            'parsing_success': 'sum',
             'duration_seconds': 'mean',
             'cost_usd': ['mean', 'sum'],
             'total_tokens': ['mean', 'sum'],
@@ -357,11 +430,14 @@ def main():
         }).round(4)
         
         provider_stats.columns = [
-            'Total_Calls', 'Successful_Calls', 'Avg_Duration',
+            'Total_Calls', 'API_Successful', 'Parsing_Successful', 'Avg_Duration',
             'Avg_Cost_Per_Call', 'Total_Cost', 'Avg_Tokens', 'Total_Tokens', 'Avg_Triples'
         ]
-        provider_stats['Success_Rate'] = (
-            provider_stats['Successful_Calls'] / provider_stats['Total_Calls'] * 100
+        provider_stats['API_Success_Rate'] = (
+            provider_stats['API_Successful'] / provider_stats['Total_Calls'] * 100
+        ).round(2)
+        provider_stats['Parsing_Success_Rate'] = (
+            provider_stats['Parsing_Successful'] / provider_stats['Total_Calls'] * 100
         ).round(2)
         
         st.subheader("Provider Performance Summary")
@@ -435,6 +511,60 @@ def main():
             )
             st.plotly_chart(fig, use_container_width=True)
         
+        # Parsing Success Cost Analysis
+        st.subheader("🎯 Cost by Success Type")
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            # Cost breakdown by API success
+            api_cost_analysis = df.groupby('success').agg({
+                'cost_usd': ['count', 'sum', 'mean'],
+                'total_tokens': 'mean'
+            }).round(4)
+            api_cost_analysis.columns = ['Call_Count', 'Total_Cost', 'Avg_Cost', 'Avg_Tokens']
+            
+            # Map boolean values to readable names
+            api_cost_analysis = api_cost_analysis.reset_index()
+            api_cost_analysis['success_label'] = api_cost_analysis['success'].apply(
+                lambda x: 'API Success' if x else 'API Failed'
+            )
+            
+            fig = px.bar(
+                api_cost_analysis,
+                x='success_label',
+                y='Total_Cost',
+                title='Total Cost by API Success',
+                labels={'success_label': 'API Status', 'Total_Cost': 'Total Cost (USD)'},
+                color='success_label',
+                color_discrete_map={'API Failed': '#ff4444', 'API Success': '#44ff44'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col4:
+            # Cost breakdown by parsing success
+            parsing_cost_analysis = df.groupby('parsing_success').agg({
+                'cost_usd': ['count', 'sum', 'mean'],
+                'total_tokens': 'mean'
+            }).round(4)
+            parsing_cost_analysis.columns = ['Call_Count', 'Total_Cost', 'Avg_Cost', 'Avg_Tokens']
+            
+            # Map boolean values to readable names
+            parsing_cost_analysis = parsing_cost_analysis.reset_index()
+            parsing_cost_analysis['parsing_label'] = parsing_cost_analysis['parsing_success'].apply(
+                lambda x: 'Parsing Success' if x else 'Parsing Failed'
+            )
+            
+            fig = px.bar(
+                parsing_cost_analysis,
+                x='parsing_label',
+                y='Total_Cost',
+                title='Total Cost by Parsing Success',
+                labels={'parsing_label': 'Parsing Status', 'Total_Cost': 'Total Cost (USD)'},
+                color='parsing_label',
+                color_discrete_map={'Parsing Failed': '#ffaa44', 'Parsing Success': '#44aaff'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
         # Cost efficiency analysis
         st.subheader("💡 Cost Efficiency Analysis")
         
@@ -489,6 +619,36 @@ def main():
             ]).round(3)
             
             st.dataframe(duration_by_template, use_container_width=True)
+        
+        # Time Analysis by Success Type
+        st.subheader("🎯 Performance by Success Type")
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            # Duration by API success
+            if 'duration_seconds' in df.columns:
+                fig = px.box(
+                    df,
+                    x='success',
+                    y='duration_seconds',
+                    title='Duration Distribution by API Success',
+                    labels={'success': 'API Success', 'duration_seconds': 'Duration (seconds)'}
+                )
+                fig.update_xaxes(ticktext=['Failed', 'Success'], tickvals=[0, 1])
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col4:
+            # Duration by parsing success
+            if 'duration_seconds' in df.columns and 'parsing_success' in df.columns:
+                fig = px.box(
+                    df,
+                    x='parsing_success',
+                    y='duration_seconds',
+                    title='Duration Distribution by Parsing Success',
+                    labels={'parsing_success': 'Parsing Success', 'duration_seconds': 'Duration (seconds)'}
+                )
+                fig.update_xaxes(ticktext=['Failed', 'Success'], tickvals=[0, 1])
+                st.plotly_chart(fig, use_container_width=True)
     
     with tab6:
         st.header("🔍 Detailed Call Analysis")
@@ -523,8 +683,9 @@ def main():
         display_columns = st.multiselect(
             "Select columns to display:",
             options=['timestamp', 'experiment_name', 'provider', 'model_name', 'template_type', 
-                    'success', 'duration_seconds', 'total_tokens', 'cost_usd', 'triples_count', 'error_message'],
-            default=['timestamp', 'experiment_name', 'provider', 'template_type', 'success', 'cost_usd']
+                    'success', 'parsing_success', 'duration_seconds', 'total_tokens', 'cost_usd', 
+                    'triples_count', 'error_message', 'parsing_error'],
+            default=['timestamp', 'experiment_name', 'provider', 'template_type', 'success', 'parsing_success', 'cost_usd']
         )
         
         if display_columns:
@@ -568,7 +729,10 @@ def main():
                                     st.write(f"{i+1}. [{triple[0]}] → {triple[1]} → [{triple[2]}]")
                     
                     if not call_data['success'] and call_data['error_message']:
-                        st.error(f"Error: {call_data['error_message']}")
+                        st.error(f"API Error: {call_data['error_message']}")
+                    
+                    if not call_data['parsing_success'] and call_data['parsing_error']:
+                        st.warning(f"Parsing Error: {call_data['parsing_error']}")
 
 if __name__ == "__main__":
     main()
