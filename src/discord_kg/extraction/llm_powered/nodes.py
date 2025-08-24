@@ -421,12 +421,13 @@ def filter_relevant_answers(questions: List[Dict[str, Any]],
     """
     Filter answers to find the most relevant candidates for a batch of questions.
     
-    Uses time-based proximity, keyword overlap, and author context to identify
-    potentially matching answers.
+    Simple approach:
+    1. Include any answers that directly reply to our questions (reply-to relationship)
+    2. Include the next 20 answers chronologically after the questions
     
     Args:
         questions: List of question messages
-        answers: List of all answer messages  
+        answers: List of all answer messages (should be sorted by timestamp)
         max_answers: Maximum number of answers to return
         
     Returns:
@@ -435,65 +436,51 @@ def filter_relevant_answers(questions: List[Dict[str, Any]],
     if not questions or not answers:
         return []
     
-    # Get time range of questions
-    question_timestamps = []
-    question_keywords = set()
+    # Get question message IDs for reply matching
+    question_ids = {q.get('message_id') for q in questions if q.get('message_id')}
     
+    # Get latest question timestamp for chronological filtering
+    latest_q_time = None
     for q in questions:
         try:
             if isinstance(q.get('timestamp'), str):
-                question_timestamps.append(dt.fromisoformat(q['timestamp'].replace('Z', '+00:00')))
-            question_keywords.update(q.get('clean_text', '').lower().split())
+                q_time = dt.fromisoformat(q['timestamp'].replace('Z', '+00:00'))
+                if latest_q_time is None or q_time > latest_q_time:
+                    latest_q_time = q_time
         except (ValueError, AttributeError):
             continue
     
-    if not question_timestamps:
-        return answers[:max_answers]  # Fallback to first N answers
+    relevant_answers = []
     
-    earliest_q = min(question_timestamps)
-    latest_q = max(question_timestamps)
-    
-    # Score answers based on relevance
-    scored_answers = []
-    
+    # Step 1: Find direct replies to our questions
     for answer in answers:
-        score = 0
-        
-        try:
-            # Time-based scoring (answers should come after questions)
-            if isinstance(answer.get('timestamp'), str):
-                answer_time = dt.fromisoformat(answer['timestamp'].replace('Z', '+00:00'))
-                
-                # Prefer answers that come after questions but not too late
-                if answer_time >= earliest_q:
-                    time_diff_hours = (answer_time - latest_q).total_seconds() / 3600
-                    if time_diff_hours <= 24:  # Within 24 hours
-                        score += 10 - min(time_diff_hours, 10)  # Closer is better
-                
-                # Keyword overlap scoring
-                answer_text = answer.get('clean_text', '').lower()
-                answer_keywords = set(answer_text.split())
-                overlap = len(question_keywords & answer_keywords)
-                score += overlap * 2
-                
-                # Length preference (longer answers often more informative)
-                if len(answer_text) > 20:
-                    score += 1
-                
-                # Reply-to relationship (Discord-specific)
-                reply_to = answer.get('reply_to')
-                if reply_to and any(q.get('message_id') == reply_to for q in questions):
-                    score += 20  # Strong indicator
-                
-                scored_answers.append((score, answer))
-                
-        except (ValueError, AttributeError):
-            # If timestamp parsing fails, give minimal score
-            scored_answers.append((1, answer))
+        reply_to = answer.get('reply_to')
+        if reply_to and reply_to in question_ids:
+            relevant_answers.append(answer)
     
-    # Sort by score (descending) and return top N
-    scored_answers.sort(key=lambda x: x[0], reverse=True)
-    return [answer for _, answer in scored_answers[:max_answers]]
+    # Step 2: Find the next 20 answers chronologically after the latest question
+    if latest_q_time:
+        chronological_answers = []
+        for answer in answers:
+            try:
+                if isinstance(answer.get('timestamp'), str):
+                    answer_time = dt.fromisoformat(answer['timestamp'].replace('Z', '+00:00'))
+                    if answer_time > latest_q_time:
+                        chronological_answers.append(answer)
+            except (ValueError, AttributeError):
+                continue
+        
+        # Take the first 20 chronological answers (assumes answers are sorted by time)
+        chronological_answers = chronological_answers[:max_answers]
+        
+        # Add chronological answers that aren't already in our list
+        existing_ids = {a.get('message_id') for a in relevant_answers}
+        for answer in chronological_answers:
+            if answer.get('message_id') not in existing_ids:
+                relevant_answers.append(answer)
+    
+    # Limit to max_answers total
+    return relevant_answers[:max_answers]
 
 
 def qa_linking_node(state: WorkflowState) -> WorkflowState:
