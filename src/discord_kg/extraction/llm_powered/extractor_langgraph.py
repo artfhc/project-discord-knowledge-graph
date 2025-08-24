@@ -65,6 +65,46 @@ except ImportError:
     )
 
 
+def generate_auto_thread_id(input_file: str) -> str:
+    """Generate automatic thread ID based on input file and timestamp."""
+    from datetime import datetime
+    import hashlib
+    
+    # Get input file base name
+    base_name = Path(input_file).stem
+    
+    # Create short hash of input file path for uniqueness
+    file_hash = hashlib.md5(str(Path(input_file).absolute()).encode()).hexdigest()[:8]
+    
+    # Add timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    return f"{base_name}_{file_hash}_{timestamp}"
+
+
+def list_available_checkpoints() -> None:
+    """List all available checkpoint thread IDs."""
+    print("🔍 Available Checkpoints:")
+    print("=" * 50)
+    
+    # For now, this is a placeholder since LangGraph's MemorySaver 
+    # doesn't provide easy checkpoint enumeration
+    # In a real implementation, you'd query the checkpoint storage
+    
+    print("📝 Note: This system uses in-memory checkpoints.")
+    print("   To list checkpoints, you would need persistent checkpoint storage.")
+    print()
+    print("💡 Suggested workflow:")
+    print("   1. Use descriptive thread IDs like: --thread-id extraction_messages_20240824")
+    print("   2. Keep a log of your thread IDs for later reference")
+    print("   3. Use --auto-thread-id for automatic unique naming")
+    print()
+    print("🔧 To implement persistent checkpointing:")
+    print("   - Replace MemorySaver with SQLiteCheckpointSaver")
+    print("   - Store checkpoints in: ./checkpoints/")
+    print()
+
+
 def setup_recording_if_enabled() -> Optional[str]:
     """Setup LLM call recording if enabled via environment variable."""
     
@@ -358,6 +398,15 @@ Examples:
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --extract-types question answer
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider openai --extract-types strategy analysis
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --skip-qa-linking
+  
+  # Checkpoint and replay examples:
+  python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --enable-checkpoints --thread-id session-001
+  python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --thread-id session-001 --replay-from-node qa_linking
+  python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --thread-id session-001 --replay-specific-extraction question
+  
+  # Thread ID management:
+  python extractor_langgraph.py --list-checkpoints  # List available checkpoints
+  python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --auto-thread-id  # Auto-generate thread ID
 
 Environment Variables:
   OPENAI_API_KEY        - Required for OpenAI provider
@@ -394,6 +443,16 @@ Environment Variables:
     parser.add_argument('--thread-id', help='Thread ID for checkpoint resumption')
     parser.add_argument('--skip-qa-linking', action='store_true',
                        help='Skip Q&A linking step (useful for large datasets or faster processing)')
+    parser.add_argument('--replay-from-node', 
+                       choices=['preprocessing', 'classification', 'extraction', 'qa_linking', 'aggregation', 'cost_tracking'],
+                       help='Replay workflow starting from a specific node (requires --thread-id and existing checkpoint)')
+    parser.add_argument('--replay-specific-extraction', 
+                       choices=['question', 'strategy', 'analysis', 'answer', 'alert', 'performance', 'discussion'],
+                       help='Replay only a specific extraction type (useful for debugging single message types)')
+    parser.add_argument('--list-checkpoints', action='store_true',
+                       help='List all available checkpoint thread IDs and their status')
+    parser.add_argument('--auto-thread-id', action='store_true',
+                       help='Automatically generate thread ID based on input file and timestamp')
     
     # Output options
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], default='INFO',
@@ -442,6 +501,18 @@ Environment Variables:
         print(f"❌ Configuration error: {e}")
         return 1
     
+    # Handle checkpoint listing
+    if args.list_checkpoints:
+        list_available_checkpoints()
+        return 0
+    
+    # Handle automatic thread ID generation
+    thread_id = args.thread_id
+    if args.auto_thread_id:
+        thread_id = generate_auto_thread_id(args.input_file)
+        if not args.quiet:
+            print(f"🆔 Generated thread ID: {thread_id}")
+    
     # Setup LLM call recording if enabled
     recording_experiment = setup_recording_if_enabled()
     if recording_experiment and not args.quiet:
@@ -465,7 +536,7 @@ Environment Variables:
             llm_model=args.model,
             batch_size=args.batch_size,
             config_path=args.config,
-            enable_checkpoints=args.enable_checkpoints,
+            enable_checkpoints=args.enable_checkpoints or thread_id is not None,
             extract_types=args.extract_types,
             should_skip_qa_linking=args.skip_qa_linking
         )

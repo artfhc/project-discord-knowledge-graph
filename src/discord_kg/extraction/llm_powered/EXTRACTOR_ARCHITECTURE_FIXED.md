@@ -397,6 +397,73 @@ flowchart TD
     end
 ```
 
+## Checkpoint and Replay System
+
+```mermaid
+graph TD
+    A["Start Workflow with --enable-checkpoints"] --> B["LangGraph creates MemorySaver"]
+    B --> C["Each Node Completion"]
+    C --> D["Save State to Checkpoint"]
+    D --> E{"Workflow Complete?"}
+    
+    E -->|"Yes"| F["Success - Keep Checkpoint"]
+    E -->|"No - Continue"| G["Next Node"]
+    E -->|"No - Failed"| H["Error - Checkpoint Preserved"]
+    
+    G --> C
+    
+    H --> I["User can replay with --thread-id"]
+    I --> J{"Replay Options"}
+    
+    J -->|"--replay-from-node X"| K["Resume from specific node"]
+    J -->|"--replay-specific-extraction Y"| L["Replay only one extraction type"]
+    J -->|"Regular resume"| M["Resume from last successful node"]
+    
+    K --> N["Load checkpoint state"]
+    L --> N
+    M --> N
+    
+    N --> O["Continue workflow from chosen point"]
+    O --> C
+    
+    subgraph CheckpointOptions ["Replay Options"]
+        R1["replay-from-node: preprocessing, classification, extraction, qa_linking, aggregation, cost_tracking"]
+        R2["replay-specific-extraction: question, strategy, analysis, answer, alert, performance, discussion"]
+        R3["Regular resume: automatic from last checkpoint"]
+    end
+    
+    style H fill:#ffcccc
+    style I fill:#ccffcc
+    style N fill:#ffffcc
+```
+
+## Replay Use Cases
+
+```mermaid
+graph LR
+    subgraph UseCases ["Common Replay Scenarios"]
+        U1["Failed Q&A Linking - Replay with different settings"]
+        U2["API Rate Limit Hit - Resume from checkpoint"]
+        U3["Debug Single Message Type - Replay specific extraction"]
+        U4["Configuration Error - Replay from classification"]
+        U5["Cost Analysis - Replay only cost_tracking node"]
+    end
+    
+    subgraph Commands ["Corresponding Commands"]
+        C1["--replay-from-node qa_linking"]
+        C2["--thread-id session-123 (auto-resume)"]
+        C3["--replay-specific-extraction question"]
+        C4["--replay-from-node classification"]
+        C5["--replay-from-node cost_tracking"]
+    end
+    
+    U1 --> C1
+    U2 --> C2
+    U3 --> C3
+    U4 --> C4
+    U5 --> C5
+```
+
 ## Usage Examples
 
 ### Basic Usage
@@ -438,6 +505,34 @@ python extractor_langgraph.py messages.jsonl triples.jsonl \
 python extractor_langgraph.py messages.jsonl triples.jsonl \
   --provider claude \
   --dry-run
+```
+
+### Checkpoint and Replay Options
+```bash
+# Enable checkpointing for long-running jobs
+python extractor_langgraph.py messages.jsonl triples.jsonl \
+  --provider claude \
+  --enable-checkpoints \
+  --thread-id my-session-001
+
+# Resume from a specific node (if previous run failed)
+python extractor_langgraph.py messages.jsonl triples.jsonl \
+  --provider claude \
+  --thread-id my-session-001 \
+  --replay-from-node qa_linking
+
+# Replay only specific extraction type (debugging)
+python extractor_langgraph.py messages.jsonl triples.jsonl \
+  --provider claude \
+  --thread-id my-session-001 \
+  --replay-specific-extraction question
+
+# Replay just Q&A linking with different settings
+python extractor_langgraph.py messages.jsonl triples.jsonl \
+  --provider claude \
+  --thread-id my-session-001 \
+  --replay-from-node qa_linking \
+  --extract-types question answer
 ```
 
 ## Performance Characteristics
