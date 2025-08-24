@@ -22,6 +22,10 @@ try:
     )
     from .config import ConfigManager
     from .llm_providers import LLMProviderFactory, TripleExtractor
+    from .token_utils import (
+        split_messages_by_token_limit, estimate_message_batch_tokens, 
+        get_rate_limit_info, calculate_optimal_batch_size
+    )
 except ImportError:
     # Fall back to direct imports (when running as script)
     from workflow_state import (
@@ -31,6 +35,10 @@ except ImportError:
     )
     from config import ConfigManager
     from llm_providers import LLMProviderFactory, TripleExtractor
+    from token_utils import (
+        split_messages_by_token_limit, estimate_message_batch_tokens, 
+        get_rate_limit_info, calculate_optimal_batch_size
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -288,13 +296,30 @@ def extraction_node_factory(message_type: str):
             template = config_manager.get_template(message_type)
             confidence_score = config_manager.get_confidence_score(message_type)
             
-            # Process in batches
-            batch_size = state["batch_size"]
+            # Process in token-aware batches
+            provider_name = state["llm_provider"].lower()
+            rate_limits = get_rate_limit_info(provider_name)
+            
+            # Calculate optimal batch size based on token estimation
+            optimal_batch_size = calculate_optimal_batch_size(
+                messages, system_prompt, template.instruction, provider_name
+            )
+            
+            # Use the smaller of user-specified batch size or optimal size
+            batch_size = min(state["batch_size"], optimal_batch_size)
+            
+            if batch_size != state["batch_size"]:
+                logger.info(f"Adjusted batch size from {state['batch_size']} to {batch_size} "
+                           f"for token limit compliance (provider: {provider_name})")
+            
+            # Split messages into token-aware batches
+            message_batches = split_messages_by_token_limit(
+                messages, system_prompt, template.instruction, provider_name
+            )
+            
             all_triples = []
             
-            for i in range(0, len(messages), batch_size):
-                batch = messages[i:i + batch_size]
-                
+            for i, batch in enumerate(message_batches, 1):
                 # Extract triples for this batch
                 extracted = extractor.extract_from_messages(
                     batch, system_prompt, template.instruction
@@ -343,7 +368,7 @@ def extraction_node_factory(message_type: str):
                 data={
                     "message_count": len(messages),
                     "triples_extracted": len(all_triples),
-                    "batches_processed": (len(messages) + batch_size - 1) // batch_size
+                    "batches_processed": len(message_batches)
                 },
                 metrics=metrics
             )

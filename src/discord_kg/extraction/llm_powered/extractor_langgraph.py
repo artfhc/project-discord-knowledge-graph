@@ -48,6 +48,10 @@ try:
     from .workflow_state import NumpyEncoder
     from .enable_recording import enable_recording_in_extractor_langgraph
     from .llm_recorder import get_call_stats, is_recording_enabled
+    from .token_utils import (
+        estimate_processing_time, get_rate_limit_info, 
+        calculate_optimal_batch_size, estimate_message_batch_tokens
+    )
 except ImportError:
     # Fall back to direct imports (when running as script)
     from workflow import ExtractionWorkflow, run_extraction_pipeline
@@ -55,6 +59,10 @@ except ImportError:
     from workflow_state import NumpyEncoder
     from enable_recording import enable_recording_in_extractor_langgraph
     from llm_recorder import get_call_stats, is_recording_enabled
+    from token_utils import (
+        estimate_processing_time, get_rate_limit_info, 
+        calculate_optimal_batch_size, estimate_message_batch_tokens
+    )
 
 
 def setup_recording_if_enabled() -> Optional[str]:
@@ -245,6 +253,96 @@ def print_processing_summary(result: Dict[str, Any]) -> None:
             print(f"   • ... and {len(result['errors']) - 3} more errors")
 
 
+def show_token_estimation(input_file: str, provider: str, config_path: str = None) -> bool:
+    """Show token estimation and optimal batch sizing information."""
+    
+    try:
+        print("🔍 Token Estimation Analysis")
+        print("=" * 40)
+        
+        # Load messages
+        messages = []
+        with open(input_file, 'r') as f:
+            for line in f:
+                messages.append(json.loads(line.strip()))
+        
+        print(f"📊 Input: {len(messages)} messages")
+        
+        # Load configuration
+        config_manager = ConfigManager(config_path)
+        system_prompt = config_manager.get_system_prompt()
+        
+        # Get rate limits for provider
+        rate_limits = get_rate_limit_info(provider.lower())
+        print(f"🚦 Rate Limits ({provider}):")
+        print(f"   • Max tokens/minute: {rate_limits.max_tokens_per_minute:,}")
+        print(f"   • Safe limit (80%): {rate_limits.safe_tokens_per_minute:,}")
+        print(f"   • Max requests/minute: {rate_limits.max_requests_per_minute}")
+        print()
+        
+        # Analyze different message types
+        message_types = {}
+        for msg in messages:
+            msg_type = msg.get('type', 'unknown')
+            if msg_type not in message_types:
+                message_types[msg_type] = []
+            message_types[msg_type].append(msg)
+        
+        print("📋 Message Type Analysis:")
+        total_optimal_batches = 0
+        
+        for msg_type, type_messages in message_types.items():
+            if not type_messages:
+                continue
+                
+            try:
+                template = config_manager.get_template(msg_type)
+                optimal_batch = calculate_optimal_batch_size(
+                    type_messages, system_prompt, template.instruction, provider.lower()
+                )
+                
+                sample_tokens = estimate_message_batch_tokens(
+                    type_messages[:1], system_prompt, template.instruction
+                )
+                
+                total_batches = (len(type_messages) + optimal_batch - 1) // optimal_batch
+                total_optimal_batches += total_batches
+                
+                print(f"   • {msg_type.capitalize()}: {len(type_messages)} messages")
+                print(f"     - Optimal batch size: {optimal_batch}")
+                print(f"     - Est. tokens per message: ~{sample_tokens}")
+                print(f"     - Batches needed: {total_batches}")
+                
+            except Exception as e:
+                print(f"   • {msg_type.capitalize()}: {len(type_messages)} messages (analysis failed: {e})")
+        
+        print()
+        
+        # Overall processing estimation
+        estimated_time = estimate_processing_time(len(messages), 10, provider.lower())
+        print(f"⏱️  Estimated Processing Time: {estimated_time:.1f} minutes")
+        print(f"📦 Total Batches: ~{total_optimal_batches}")
+        print()
+        
+        # Recommendations
+        print("💡 Recommendations:")
+        if total_optimal_batches > rate_limits.max_requests_per_minute:
+            print(f"   ⚠️  Processing will take multiple minutes due to request rate limits")
+        
+        largest_type = max(message_types.keys(), key=lambda x: len(message_types[x]))
+        if len(message_types[largest_type]) > 100:
+            print(f"   💡 Consider processing {largest_type} messages separately for better control")
+            
+        print(f"   ✅ Token-aware batching will automatically prevent rate limit errors")
+        print()
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error during token estimation: {e}")
+        return False
+
+
 def main():
     """Main CLI entry point."""
     
@@ -300,6 +398,8 @@ Environment Variables:
                        help='Only validate input and configuration, don\'t process')
     parser.add_argument('--dry-run', action='store_true',
                        help='Validate everything but don\'t make API calls')
+    parser.add_argument('--estimate-tokens', action='store_true',
+                       help='Show token estimation and optimal batch sizing before processing')
     
     args = parser.parse_args()
     
@@ -342,6 +442,12 @@ Environment Variables:
     # Exit if validation only
     if args.validate_only:
         print("✅ Validation completed - all checks passed")
+        return 0
+    
+    # Show token estimation if requested
+    if args.estimate_tokens:
+        if not show_token_estimation(args.input_file, args.provider, args.config):
+            return 1
         return 0
     
     # Create workflow

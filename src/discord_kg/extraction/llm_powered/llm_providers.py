@@ -408,13 +408,11 @@ class TripleExtractor:
                             # Fall back to direct import
                             from llm_recorder import update_latest_record_reasoning
                         
-                        print(f"[DEBUG] Updating database with reasoning ({len(reasoning)} chars)")
                         update_latest_record_reasoning(reasoning)
-                        print(f"[DEBUG] Database update completed")
-                    except ImportError as e:
-                        print(f"[DEBUG] Could not import update_latest_record_reasoning: {e}")
+                    except ImportError:
+                        pass  # Recording not available
                     except Exception as e:
-                        print(f"[DEBUG] Error updating reasoning: {e}")
+                        get_logger().debug(f"Failed to update reasoning in database: {e}")
                 
                 # Log first part of reasoning for debugging
                 if reasoning:
