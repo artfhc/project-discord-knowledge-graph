@@ -187,7 +187,7 @@ def create_initial_state(
         error_log=[],
         
         # Control flow
-        should_skip_qa_linking=False,
+        # should_skip_qa_linking=False,
         should_retry=False,
         max_retries=3,
         current_retry=0

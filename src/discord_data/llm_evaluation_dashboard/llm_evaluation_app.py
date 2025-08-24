@@ -40,6 +40,7 @@ def load_data(db_path: str):
             messages,
             message_types,
             batch_size,
+            messages_in_batch,
             segment_id,
             system_prompt,
             user_prompt,
@@ -376,12 +377,14 @@ def main():
                 'duration_seconds': 'mean',
                 'cost_usd': ['mean', 'sum'],
                 'total_tokens': 'mean',
-                'triples_count': 'mean'
+                'triples_count': 'mean',
+                'batch_size': 'mean',
+                'messages_in_batch': 'mean'
             }).round(4)
             
             template_stats.columns = [
                 'Total_Calls', 'API_Successful', 'Parsing_Successful', 'Avg_Duration', 
-                'Avg_Cost', 'Total_Cost', 'Avg_Tokens', 'Avg_Triples'
+                'Avg_Cost', 'Total_Cost', 'Avg_Tokens', 'Avg_Triples', 'Avg_Batch_Size', 'Avg_Messages_In_Batch'
             ]
             template_stats['API_Success_Rate'] = (
                 template_stats['API_Successful'] / template_stats['Total_Calls'] * 100
@@ -416,6 +419,33 @@ def main():
                     labels={'Avg_Triples': 'Average Triples', 'template_type': 'Template Type'}
                 )
                 st.plotly_chart(fig, use_container_width=True)
+            
+            # Add batch size analysis
+            st.subheader("📦 Batch Size Analysis")
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                # Messages in batch by template
+                fig = px.bar(
+                    template_stats.reset_index(),
+                    x='template_type',
+                    y='Avg_Messages_In_Batch',
+                    title='Average Messages per Batch by Template',
+                    labels={'Avg_Messages_In_Batch': 'Avg Messages in Batch', 'template_type': 'Template Type'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col4:
+                # Batch size distribution
+                if 'messages_in_batch' in df.columns:
+                    fig = px.histogram(
+                        df,
+                        x='messages_in_batch',
+                        title='Distribution of Messages per Batch',
+                        nbins=20,
+                        labels={'messages_in_batch': 'Messages in Batch', 'count': 'Number of Calls'}
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
         st.header("⚖️ Provider Comparison")
@@ -426,12 +456,15 @@ def main():
             'duration_seconds': 'mean',
             'cost_usd': ['mean', 'sum'],
             'total_tokens': ['mean', 'sum'],
-            'triples_count': 'mean'
+            'triples_count': 'mean',
+            'batch_size': 'mean',
+            'messages_in_batch': 'mean'
         }).round(4)
         
         provider_stats.columns = [
             'Total_Calls', 'API_Successful', 'Parsing_Successful', 'Avg_Duration',
-            'Avg_Cost_Per_Call', 'Total_Cost', 'Avg_Tokens', 'Total_Tokens', 'Avg_Triples'
+            'Avg_Cost_Per_Call', 'Total_Cost', 'Avg_Tokens', 'Total_Tokens', 'Avg_Triples',
+            'Avg_Batch_Size', 'Avg_Messages_In_Batch'
         ]
         provider_stats['API_Success_Rate'] = (
             provider_stats['API_Successful'] / provider_stats['Total_Calls'] * 100
@@ -684,8 +717,8 @@ def main():
             "Select columns to display:",
             options=['timestamp', 'experiment_name', 'provider', 'model_name', 'template_type', 
                     'success', 'parsing_success', 'duration_seconds', 'total_tokens', 'cost_usd', 
-                    'triples_count', 'error_message', 'parsing_error'],
-            default=['timestamp', 'experiment_name', 'provider', 'template_type', 'success', 'parsing_success', 'cost_usd']
+                    'triples_count', 'batch_size', 'messages_in_batch', 'error_message', 'parsing_error'],
+            default=['timestamp', 'experiment_name', 'provider', 'template_type', 'success', 'parsing_success', 'cost_usd', 'messages_in_batch']
         )
         
         if display_columns:
