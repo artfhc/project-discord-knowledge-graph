@@ -40,9 +40,15 @@ def patch_llm_providers_with_recording():
             
             # Infer template type from user prompt content (which contains the specific instructions)
             user_lower = user_prompt.lower()
-            if "question triples" in user_lower or "asks_about" in user_lower:
+            
+            # Check for Q&A linking first (most specific pattern)
+            if ("link questions to" in user_lower or "questions:" in user_lower or "answers:" in user_lower 
+                or "answered_by" in user_lower or ("linking" in user_lower and "questions" in user_lower)):
+                template_type = "qa_linking"
+                workflow_step = "qa_linking"
+            elif "question triples" in user_lower or "asks_about" in user_lower:
                 template_type = "question"
-            elif "strategy" in user_lower or "strategy triples" in user_lower:
+            elif "strategy triples" in user_lower or ("strategy" in user_lower and "recommends" in user_lower):
                 template_type = "strategy"
             elif "analysis triples" in user_lower or "analyzes" in user_lower:
                 template_type = "analysis"
@@ -54,9 +60,6 @@ def patch_llm_providers_with_recording():
                 template_type = "performance"
             elif "alert triples" in user_lower or "alerts" in user_lower:
                 template_type = "alert"
-            elif "linking" in user_lower or "connect" in user_lower or "answered_by" in user_lower:
-                template_type = "qa_linking"
-                workflow_step = "qa_linking"
             
             # Create mock messages list for recording (since we don't have access to the original messages here)
             # We'll extract what we can from the user prompt
