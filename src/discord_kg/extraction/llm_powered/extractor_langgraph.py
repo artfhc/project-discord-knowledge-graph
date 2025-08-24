@@ -355,6 +355,8 @@ Examples:
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --batch-size 10
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider openai --config custom_prompts.yaml
   python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --model claude-3-sonnet-20240229 --log-level DEBUG
+  python extractor_langgraph.py messages.jsonl triples.jsonl --provider claude --extract-types question answer
+  python extractor_langgraph.py messages.jsonl triples.jsonl --provider openai --extract-types strategy analysis
 
 Environment Variables:
   OPENAI_API_KEY        - Required for OpenAI provider
@@ -381,6 +383,9 @@ Environment Variables:
     parser.add_argument('--batch-size', type=int, default=20,
                        help='Messages per LLM request - smaller for accuracy, larger for efficiency (default: 20)')
     parser.add_argument('--config', help='Path to YAML prompt configuration file')
+    parser.add_argument('--extract-types', nargs='+', 
+                       choices=['question', 'strategy', 'analysis', 'answer', 'alert', 'performance', 'discussion'],
+                       help='Specific message types to extract (default: all types). Example: --extract-types question answer')
     
     # Workflow options
     parser.add_argument('--enable-checkpoints', action='store_true',
@@ -457,7 +462,8 @@ Environment Variables:
             llm_model=args.model,
             batch_size=args.batch_size,
             config_path=args.config,
-            enable_checkpoints=args.enable_checkpoints
+            enable_checkpoints=args.enable_checkpoints,
+            extract_types=args.extract_types
         )
         
         if not args.quiet:
@@ -481,6 +487,10 @@ Environment Variables:
             print(f"   Output: {args.output_file}")
             print(f"   Provider: {args.provider}")
             print(f"   Batch size: {args.batch_size}")
+            if args.extract_types:
+                print(f"   Extract types: {', '.join(args.extract_types)}")
+            else:
+                print(f"   Extract types: all")
         
         result = run_extraction_pipeline(
             input_file=args.input_file,
@@ -488,7 +498,8 @@ Environment Variables:
             llm_provider=args.provider,
             llm_model=args.model,
             batch_size=args.batch_size,
-            config_path=args.config
+            config_path=args.config,
+            extract_types=args.extract_types
         )
         
         if not args.quiet:

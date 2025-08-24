@@ -59,11 +59,20 @@ def routing_node(state: WorkflowState) -> Literal[
     # Determine which message types have messages to process
     message_types_to_process = []
     
+    # Check if user specified which types to extract
+    allowed_types = state.get("extract_types")
+    if allowed_types:
+        allowed_types = set(allowed_types)
+    
     for msg_type in [
         MessageType.QUESTION, MessageType.STRATEGY, MessageType.ANALYSIS,
         MessageType.ANSWER, MessageType.ALERT, MessageType.PERFORMANCE,
         MessageType.DISCUSSION
     ]:
+        # Skip if user specified types and this type is not allowed
+        if allowed_types and msg_type.value not in allowed_types:
+            continue
+            
         messages = get_messages_by_type(state, msg_type.value)
         if messages:
             message_types_to_process.append(msg_type.value)
@@ -197,7 +206,8 @@ class ExtractionWorkflow:
         llm_model: Optional[str] = None,
         batch_size: int = 20,
         config_path: Optional[str] = None,
-        enable_checkpoints: bool = False
+        enable_checkpoints: bool = False,
+        extract_types: Optional[List[str]] = None
     ):
         """
         Initialize the extraction workflow.
@@ -208,12 +218,14 @@ class ExtractionWorkflow:
             batch_size: Batch size for processing
             config_path: Path to configuration file
             enable_checkpoints: Enable workflow checkpointing
+            extract_types: Specific message types to extract
         """
         self.llm_provider = llm_provider
         self.llm_model = llm_model
         self.batch_size = batch_size
         self.config_path = config_path
         self.enable_checkpoints = enable_checkpoints
+        self.extract_types = extract_types
         
         # Create workflow
         self.graph = create_extraction_workflow()
@@ -255,7 +267,8 @@ class ExtractionWorkflow:
             llm_model=self.llm_model,
             batch_size=self.batch_size,
             config_path=self.config_path,
-            segment_id=segment_id
+            segment_id=segment_id,
+            extract_types=self.extract_types
         )
         
         # Run workflow
@@ -331,7 +344,8 @@ class ExtractionWorkflow:
             llm_model=self.llm_model,
             batch_size=self.batch_size,
             config_path=self.config_path,
-            segment_id=segment_id
+            segment_id=segment_id,
+            extract_types=self.extract_types
         )
         
         # Run workflow with streaming
@@ -366,7 +380,8 @@ def run_extraction_pipeline(
     llm_provider: str = "openai",
     llm_model: Optional[str] = None,
     batch_size: int = 20,
-    config_path: Optional[str] = None
+    config_path: Optional[str] = None,
+    extract_types: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Convenience function to run the extraction pipeline on a file.
@@ -378,6 +393,7 @@ def run_extraction_pipeline(
         llm_model: Specific model name
         batch_size: Batch size for processing
         config_path: Path to configuration file
+        extract_types: Specific message types to extract
         
     Returns:
         Processing summary dictionary
@@ -402,7 +418,8 @@ def run_extraction_pipeline(
         llm_provider=llm_provider,
         llm_model=llm_model,
         batch_size=batch_size,
-        config_path=config_path
+        config_path=config_path,
+        extract_types=extract_types
     )
     
     result = workflow.run(messages)
