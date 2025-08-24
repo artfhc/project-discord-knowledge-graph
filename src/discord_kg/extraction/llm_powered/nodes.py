@@ -12,6 +12,7 @@ import datetime
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
 import re
+from datetime import datetime as dt
 
 try:
     # Try relative imports first (when used as package)
@@ -414,6 +415,87 @@ def extraction_node_factory(message_type: str):
     return extraction_node
 
 
+def filter_relevant_answers(questions: List[Dict[str, Any]], 
+                           answers: List[Dict[str, Any]], 
+                           max_answers: int = 20) -> List[Dict[str, Any]]:
+    """
+    Filter answers to find the most relevant candidates for a batch of questions.
+    
+    Uses time-based proximity, keyword overlap, and author context to identify
+    potentially matching answers.
+    
+    Args:
+        questions: List of question messages
+        answers: List of all answer messages  
+        max_answers: Maximum number of answers to return
+        
+    Returns:
+        List of filtered answer messages most likely to be relevant
+    """
+    if not questions or not answers:
+        return []
+    
+    # Get time range of questions
+    question_timestamps = []
+    question_keywords = set()
+    
+    for q in questions:
+        try:
+            if isinstance(q.get('timestamp'), str):
+                question_timestamps.append(dt.fromisoformat(q['timestamp'].replace('Z', '+00:00')))
+            question_keywords.update(q.get('clean_text', '').lower().split())
+        except (ValueError, AttributeError):
+            continue
+    
+    if not question_timestamps:
+        return answers[:max_answers]  # Fallback to first N answers
+    
+    earliest_q = min(question_timestamps)
+    latest_q = max(question_timestamps)
+    
+    # Score answers based on relevance
+    scored_answers = []
+    
+    for answer in answers:
+        score = 0
+        
+        try:
+            # Time-based scoring (answers should come after questions)
+            if isinstance(answer.get('timestamp'), str):
+                answer_time = dt.fromisoformat(answer['timestamp'].replace('Z', '+00:00'))
+                
+                # Prefer answers that come after questions but not too late
+                if answer_time >= earliest_q:
+                    time_diff_hours = (answer_time - latest_q).total_seconds() / 3600
+                    if time_diff_hours <= 24:  # Within 24 hours
+                        score += 10 - min(time_diff_hours, 10)  # Closer is better
+                
+                # Keyword overlap scoring
+                answer_text = answer.get('clean_text', '').lower()
+                answer_keywords = set(answer_text.split())
+                overlap = len(question_keywords & answer_keywords)
+                score += overlap * 2
+                
+                # Length preference (longer answers often more informative)
+                if len(answer_text) > 20:
+                    score += 1
+                
+                # Reply-to relationship (Discord-specific)
+                reply_to = answer.get('reply_to')
+                if reply_to and any(q.get('message_id') == reply_to for q in questions):
+                    score += 20  # Strong indicator
+                
+                scored_answers.append((score, answer))
+                
+        except (ValueError, AttributeError):
+            # If timestamp parsing fails, give minimal score
+            scored_answers.append((1, answer))
+    
+    # Sort by score (descending) and return top N
+    scored_answers.sort(key=lambda x: x[0], reverse=True)
+    return [answer for _, answer in scored_answers[:max_answers]]
+
+
 def qa_linking_node(state: WorkflowState) -> WorkflowState:
     """Link questions to answers using LLM-based semantic matching."""
     start_time = time.time()
@@ -448,20 +530,29 @@ def qa_linking_node(state: WorkflowState) -> WorkflowState:
         template = config_manager.get_template("qa_linking")
         confidence_score = config_manager.get_confidence_score("qa_linking")
         
-        # Process in smaller batches (Q&A linking is more expensive)
-        max_qa_batch = min(5, len(questions))
+        # Use time-based and contextual filtering for efficient Q&A linking
+        max_qa_batch = min(3, len(questions))  # Smaller batches for better accuracy
+        max_answers_per_batch = min(20, len(answers))  # Limit answers per batch
         qa_links = []
         
         total_qa_batches = (len(questions) + max_qa_batch - 1) // max_qa_batch
-        logger.info(f"Processing {total_qa_batches} Q&A linking batches")
+        logger.info(f"Processing {total_qa_batches} Q&A linking batches (max {max_answers_per_batch} answers per batch)")
         
         for batch_idx, i in enumerate(range(0, len(questions), max_qa_batch), 1):
             q_batch = questions[i:i + max_qa_batch]
-            logger.info(f"[{batch_idx}/{total_qa_batches}] Q&A linking batch {batch_idx} with {len(q_batch)} questions vs {len(answers)} answers")
             
-            # Extract Q&A links
+            # Filter answers to most relevant candidates for this question batch
+            relevant_answers = filter_relevant_answers(q_batch, answers, max_answers_per_batch)
+            
+            logger.info(f"[{batch_idx}/{total_qa_batches}] Q&A linking batch {batch_idx} with {len(q_batch)} questions vs {len(relevant_answers)} filtered answers")
+            
+            if not relevant_answers:
+                logger.info(f"[{batch_idx}/{total_qa_batches}] No relevant answers found for batch {batch_idx}, skipping")
+                continue
+            
+            # Extract Q&A links with filtered answers
             extracted_links = extractor.extract_qa_links(
-                q_batch, answers, system_prompt, template.instruction
+                q_batch, relevant_answers, system_prompt, template.instruction
             )
             
             # Convert to Triple objects

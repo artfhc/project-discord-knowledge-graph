@@ -106,6 +106,7 @@ class WorkflowState(TypedDict):
     llm_model: Optional[str]
     config_path: Optional[str]
     extract_types: Optional[List[str]]  # Specific message types to extract
+    should_skip_qa_linking: bool  # Skip Q&A linking step
     
     # Processing state
     current_step: str
@@ -144,7 +145,8 @@ def create_initial_state(
     batch_size: int = 20,
     config_path: Optional[str] = None,
     segment_id: Optional[str] = None,
-    extract_types: Optional[List[str]] = None
+    extract_types: Optional[List[str]] = None,
+    should_skip_qa_linking: bool = False
 ) -> WorkflowState:
     """Create initial workflow state."""
     
@@ -159,6 +161,7 @@ def create_initial_state(
         llm_model=llm_model,
         config_path=config_path,
         extract_types=extract_types,
+        should_skip_qa_linking=should_skip_qa_linking,
         
         # Processing state
         current_step="preprocessing",

@@ -207,7 +207,8 @@ class ExtractionWorkflow:
         batch_size: int = 20,
         config_path: Optional[str] = None,
         enable_checkpoints: bool = False,
-        extract_types: Optional[List[str]] = None
+        extract_types: Optional[List[str]] = None,
+        should_skip_qa_linking: bool = False
     ):
         """
         Initialize the extraction workflow.
@@ -219,6 +220,7 @@ class ExtractionWorkflow:
             config_path: Path to configuration file
             enable_checkpoints: Enable workflow checkpointing
             extract_types: Specific message types to extract
+            should_skip_qa_linking: Skip Q&A linking step
         """
         self.llm_provider = llm_provider
         self.llm_model = llm_model
@@ -226,6 +228,7 @@ class ExtractionWorkflow:
         self.config_path = config_path
         self.enable_checkpoints = enable_checkpoints
         self.extract_types = extract_types
+        self.should_skip_qa_linking = should_skip_qa_linking
         
         # Create workflow
         self.graph = create_extraction_workflow()
@@ -268,7 +271,8 @@ class ExtractionWorkflow:
             batch_size=self.batch_size,
             config_path=self.config_path,
             segment_id=segment_id,
-            extract_types=self.extract_types
+            extract_types=self.extract_types,
+            should_skip_qa_linking=self.should_skip_qa_linking
         )
         
         # Run workflow
@@ -345,7 +349,8 @@ class ExtractionWorkflow:
             batch_size=self.batch_size,
             config_path=self.config_path,
             segment_id=segment_id,
-            extract_types=self.extract_types
+            extract_types=self.extract_types,
+            should_skip_qa_linking=self.should_skip_qa_linking
         )
         
         # Run workflow with streaming
@@ -381,7 +386,8 @@ def run_extraction_pipeline(
     llm_model: Optional[str] = None,
     batch_size: int = 20,
     config_path: Optional[str] = None,
-    extract_types: Optional[List[str]] = None
+    extract_types: Optional[List[str]] = None,
+    should_skip_qa_linking: bool = False
 ) -> Dict[str, Any]:
     """
     Convenience function to run the extraction pipeline on a file.
@@ -394,6 +400,7 @@ def run_extraction_pipeline(
         batch_size: Batch size for processing
         config_path: Path to configuration file
         extract_types: Specific message types to extract
+        should_skip_qa_linking: Skip Q&A linking step
         
     Returns:
         Processing summary dictionary
@@ -419,7 +426,8 @@ def run_extraction_pipeline(
         llm_model=llm_model,
         batch_size=batch_size,
         config_path=config_path,
-        extract_types=extract_types
+        extract_types=extract_types,
+        should_skip_qa_linking=should_skip_qa_linking
     )
     
     result = workflow.run(messages)
