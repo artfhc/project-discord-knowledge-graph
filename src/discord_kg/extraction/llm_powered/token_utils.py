@@ -147,10 +147,11 @@ def calculate_optimal_batch_size(messages: List[Dict[str, Any]],
     
     # Target tokens per request (leave room for multiple requests per minute)
     if target_tokens_per_request is None:
-        # Assume we want to make ~10 requests per minute max
+        # More aggressive batching: aim for 3-5 requests per minute
+        # This allows better utilization of token limits
         target_tokens_per_request = min(
-            limits.safe_tokens_per_minute // 10,
-            15_000  # Reasonable max per request
+            limits.safe_tokens_per_minute // 3,  # 50000 * 0.8 // 3 = ~13,333 tokens per request
+            20_000  # Reasonable max per request
         )
     
     # Estimate tokens for a single message

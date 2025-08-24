@@ -62,7 +62,11 @@ def preprocessing_node(state: WorkflowState) -> WorkflowState:
         segments = defaultdict(list)
         error_count = 0
         
-        for msg in state["raw_messages"]:
+        total_messages = len(state["raw_messages"])
+        
+        for msg_idx, msg in enumerate(state["raw_messages"], 1):
+            if msg_idx % 100 == 0 or msg_idx == total_messages:
+                logger.info(f"[{msg_idx}/{total_messages}] Preprocessing progress: {msg_idx} messages processed")
             try:
                 # Validate required fields
                 required_fields = ['message_id', 'author', 'timestamp']
@@ -185,7 +189,11 @@ def classification_node(state: WorkflowState) -> WorkflowState:
         performance_pattern = re.compile(r'([+-]?\d+(?:\.\d+)?)\s*%')
         return_keywords = re.compile(r'\b(profit|loss|gain|return|made|lost|performance)\b', re.IGNORECASE)
         
-        for msg in messages:
+        total_messages = len(messages)
+        
+        for msg_idx, msg in enumerate(messages, 1):
+            if msg_idx % 100 == 0 or msg_idx == total_messages:
+                logger.info(f"[{msg_idx}/{total_messages}] Classification progress: {msg_idx} messages classified")
             text = msg['clean_text'].lower()
             
             # Check for performance first (most specific)
@@ -318,8 +326,12 @@ def extraction_node_factory(message_type: str):
             )
             
             all_triples = []
+            total_batches = len(message_batches)
+            
+            logger.info(f"Processing {total_batches} batches for {message_type} extraction")
             
             for i, batch in enumerate(message_batches, 1):
+                logger.info(f"[{i}/{total_batches}] Processing batch {i} with {len(batch)} messages")
                 # Extract triples for this batch
                 extracted = extractor.extract_from_messages(
                     batch, system_prompt, template.instruction
@@ -343,6 +355,8 @@ def extraction_node_factory(message_type: str):
                                 )
                                 all_triples.append(triple)
                                 break
+                
+                logger.info(f"[{i}/{total_batches}] Batch {i} completed: extracted {len(extracted)} triples")
                 
                 # Rate limiting
                 time.sleep(state.get("rate_limit_delay_ms", 100) / 1000.0)
@@ -438,8 +452,12 @@ def qa_linking_node(state: WorkflowState) -> WorkflowState:
         max_qa_batch = min(5, len(questions))
         qa_links = []
         
-        for i in range(0, len(questions), max_qa_batch):
+        total_qa_batches = (len(questions) + max_qa_batch - 1) // max_qa_batch
+        logger.info(f"Processing {total_qa_batches} Q&A linking batches")
+        
+        for batch_idx, i in enumerate(range(0, len(questions), max_qa_batch), 1):
             q_batch = questions[i:i + max_qa_batch]
+            logger.info(f"[{batch_idx}/{total_qa_batches}] Q&A linking batch {batch_idx} with {len(q_batch)} questions vs {len(answers)} answers")
             
             # Extract Q&A links
             extracted_links = extractor.extract_qa_links(
@@ -460,6 +478,8 @@ def qa_linking_node(state: WorkflowState) -> WorkflowState:
                         extraction_method="llm_qa_linking"
                     )
                     qa_links.append(triple)
+            
+            logger.info(f"[{batch_idx}/{total_qa_batches}] Q&A batch {batch_idx} completed: found {len(extracted_links)} links")
             
             # Rate limiting
             time.sleep(state.get("rate_limit_delay_ms", 100) / 1000.0)
@@ -526,7 +546,12 @@ def aggregation_node(state: WorkflowState) -> WorkflowState:
         deduplicated_triples = []
         seen_triples = set()
         
-        for triple in all_triples:
+        total_triples = len(all_triples)
+        logger.info(f"Starting validation of {total_triples} triples")
+        
+        for triple_idx, triple in enumerate(all_triples, 1):
+            if triple_idx % 50 == 0 or triple_idx == total_triples:
+                logger.info(f"[{triple_idx}/{total_triples}] Validation progress: {triple_idx} triples processed")
             # Create a normalized key for deduplication
             key = f"{triple.subject}|{triple.predicate}|{triple.object}".lower().strip()
             

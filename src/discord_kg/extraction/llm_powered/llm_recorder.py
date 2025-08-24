@@ -71,6 +71,10 @@ class LLMCallRecord:
     node_name: str = ""
     workflow_state: Optional[Dict[str, Any]] = None
     
+    # Batch processing info
+    batch_size: int = 1
+    messages_in_batch: int = 1
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
         return asdict(self)
@@ -98,6 +102,7 @@ class LLMCallStorage:
                     messages TEXT,  -- JSON
                     message_types TEXT,  -- JSON array
                     batch_size INTEGER,
+                    messages_in_batch INTEGER DEFAULT 1,
                     segment_id TEXT,
                     
                     -- Prompt data
@@ -156,6 +161,11 @@ class LLMCallStorage:
                 
             try:
                 conn.execute('ALTER TABLE llm_calls ADD COLUMN reasoning TEXT')
+            except:
+                pass  # Column already exists
+                
+            try:
+                conn.execute('ALTER TABLE llm_calls ADD COLUMN messages_in_batch INTEGER DEFAULT 1')
             except:
                 pass  # Column already exists
             

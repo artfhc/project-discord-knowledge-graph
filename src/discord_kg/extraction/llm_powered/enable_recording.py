@@ -71,6 +71,9 @@ def patch_llm_providers_with_recording():
                 'segment_id': f'segment_{hash(system_prompt) % 1000}'
             }]
             
+            # Estimate batch size from user prompt content
+            estimated_messages = max(1, user_prompt.count('Author:'))  # Count messages in prompt
+            
             # Use recording context manager
             with record_llm_call(
                 messages=mock_messages,
@@ -84,7 +87,8 @@ def patch_llm_providers_with_recording():
                 user_prompt=user_prompt,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
-                segment_id=mock_messages[0]['segment_id']
+                segment_id=mock_messages[0]['segment_id'],
+                messages_in_batch=estimated_messages
             ) as record:
                 
                 try:
