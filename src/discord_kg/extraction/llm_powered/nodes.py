@@ -531,12 +531,32 @@ def qa_linking_node(state: WorkflowState) -> WorkflowState:
         confidence_score = config_manager.get_confidence_score("qa_linking")
         
         # Use time-based and contextual filtering for efficient Q&A linking
-        max_qa_batch = min(3, len(questions))  # Smaller batches for better accuracy
         max_answers_per_batch = min(20, len(answers))  # Limit answers per batch
         qa_links = []
         
+        # Calculate token-aware batch size for Q&A linking (similar to extraction nodes)
+        provider_name = state["llm_provider"].lower()
+        rate_limits = get_rate_limit_info(provider_name)
+        
+        # Q&A linking is more expensive due to longer prompts, so use smaller target
+        qa_target_tokens = min(rate_limits.safe_tokens_per_minute // 5, 8000)  # Conservative for Q&A
+        
+        # Estimate tokens for Q&A linking (questions + sample answers + prompt overhead)
+        sample_q = questions[:1] if questions else []
+        sample_a = answers[:max_answers_per_batch] if answers else []
+        
+        if sample_q and sample_a:
+            sample_tokens = estimate_message_batch_tokens(
+                sample_q + sample_a, system_prompt, template.instruction
+            )
+            # Calculate how many questions can fit given fixed number of answers
+            max_qa_batch = max(1, qa_target_tokens // max(sample_tokens, 1000))
+            max_qa_batch = min(max_qa_batch, len(questions), state["batch_size"])
+        else:
+            max_qa_batch = min(3, len(questions))  # Fallback
+        
         total_qa_batches = (len(questions) + max_qa_batch - 1) // max_qa_batch
-        logger.info(f"Processing {total_qa_batches} Q&A linking batches (max {max_answers_per_batch} answers per batch)")
+        logger.info(f"Processing {total_qa_batches} Q&A linking batches (batch size: {max_qa_batch}, max {max_answers_per_batch} answers per batch)")
         
         for batch_idx, i in enumerate(range(0, len(questions), max_qa_batch), 1):
             q_batch = questions[i:i + max_qa_batch]
