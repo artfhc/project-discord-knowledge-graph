@@ -426,14 +426,22 @@ class TripleExtractor:
             if not isinstance(links, list):
                 return []
             
-            # Filter for valid Q&A links
+            # Filter for valid Q&A links (support both 3 and 4 element formats)
             valid_links = []
             for link in links:
-                if (len(link) == 3 and 
+                if (len(link) >= 3 and 
                     link[1] == "answered_by" and
                     isinstance(link[0], str) and 
                     isinstance(link[2], str)):
-                    valid_links.append(link)
+                    # Validate confidence score if present (4th element)
+                    if len(link) >= 4:
+                        if isinstance(link[3], (int, float)) and 0.0 <= link[3] <= 1.0:
+                            valid_links.append(link)
+                        else:
+                            get_logger().warning(f"Invalid Q&A link confidence score: {link[3]}, skipping link")
+                    else:
+                        # 3-element format (backward compatibility)
+                        valid_links.append(link)
             
             return valid_links
         

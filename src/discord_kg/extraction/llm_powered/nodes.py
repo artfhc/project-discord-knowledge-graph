@@ -344,6 +344,19 @@ def extraction_node_factory(message_type: str):
                         # Find corresponding message (simple matching by author)
                         for msg in batch:
                             if msg['author'] == triple_data[0]:
+                                # Extract LLM-provided confidence if available (4th element)
+                                if len(triple_data) >= 4 and isinstance(triple_data[3], (int, float)):
+                                    llm_confidence = float(triple_data[3])
+                                    # Validate confidence is in valid range
+                                    if 0.0 <= llm_confidence <= 1.0:
+                                        used_confidence = llm_confidence
+                                    else:
+                                        logger.warning(f"Invalid LLM confidence {llm_confidence}, using default")
+                                        used_confidence = confidence_score
+                                else:
+                                    # Fallback to static confidence score
+                                    used_confidence = confidence_score
+                                
                                 triple = Triple(
                                     subject=str(triple_data[0]),
                                     predicate=str(triple_data[1]),
@@ -351,7 +364,7 @@ def extraction_node_factory(message_type: str):
                                     message_id=msg['message_id'],
                                     segment_id=msg['segment_id'],
                                     timestamp=msg['timestamp'],
-                                    confidence=confidence_score,
+                                    confidence=used_confidence,
                                     extraction_method="llm"
                                 )
                                 all_triples.append(triple)
@@ -544,7 +557,20 @@ def qa_linking_node(state: WorkflowState) -> WorkflowState:
             
             # Convert to Triple objects
             for link_data in extracted_links:
-                if len(link_data) == 3 and link_data[1] == "answered_by":
+                if len(link_data) >= 3 and link_data[1] == "answered_by":
+                    # Extract LLM-provided confidence if available (4th element)
+                    if len(link_data) >= 4 and isinstance(link_data[3], (int, float)):
+                        llm_confidence = float(link_data[3])
+                        # Validate confidence is in valid range
+                        if 0.0 <= llm_confidence <= 1.0:
+                            used_confidence = llm_confidence
+                        else:
+                            logger.warning(f"Invalid Q&A link confidence {llm_confidence}, using default")
+                            used_confidence = confidence_score
+                    else:
+                        # Fallback to static confidence score
+                        used_confidence = confidence_score
+                    
                     triple = Triple(
                         subject=str(link_data[0]),
                         predicate=str(link_data[1]),
@@ -552,7 +578,7 @@ def qa_linking_node(state: WorkflowState) -> WorkflowState:
                         message_id=f"{link_data[0]}_link_{link_data[2]}",
                         segment_id=state.get("segment_id", "qa_links"),
                         timestamp=datetime.datetime.now().isoformat(),
-                        confidence=confidence_score,
+                        confidence=used_confidence,
                         extraction_method="llm_qa_linking"
                     )
                     qa_links.append(triple)

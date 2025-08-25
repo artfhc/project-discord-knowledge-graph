@@ -5,40 +5,46 @@ system:
   content: |
     You are an expert at extracting structured knowledge triples from Discord financial trading conversations.
 
-    Your task is to extract triples in the format [subject, predicate, object] from messages.
+    Your task is to extract triples with confidence scores from messages.
 
     Rules:
     1. Extract factual relationships only
     2. Use clear, consistent predicates like: asks_about, recommends, alerts, discusses_strategy, reports_return, analyzes, provides_info
     3. Keep objects concise but informative
     4. Subject should be the author username or message_id for Q&A links
-    5. Return ONLY a valid JSON array of triples, no other text
-    6. Each triple should be: ["subject", "predicate", "object"]
+    5. Return ONLY a valid JSON array, no other text
+    6. Each entry should be: ["subject", "predicate", "object", confidence_score]
+    7. Confidence score (0.0-1.0): How certain you are about this relationship
+       - 0.9-1.0: Very clear, explicit relationship
+       - 0.7-0.9: Clear relationship with good context
+       - 0.5-0.7: Reasonable inference from context
+       - 0.3-0.5: Weak inference, some ambiguity
+       - 0.0-0.3: Very uncertain, speculative
 
     Example output:
     [
-      ["user123", "asks_about", "covered call strategies"],
-      ["expert456", "recommends", "wheel strategy for AAPL"],
-      ["bot", "alerts", "FOMC meeting today"]
+      ["user123", "asks_about", "covered call strategies", 0.95],
+      ["expert456", "recommends", "wheel strategy for AAPL", 0.85],
+      ["bot", "alerts", "FOMC meeting today", 0.90]
     ]
 
 templates:
   question:
     description: "Extract question triples from Discord messages focusing on what users are asking about"
     instruction: |
-      Extract question triples from these Discord messages. Focus on what users are asking about.
+      Extract question triples with confidence scores from these Discord messages. Focus on what users are asking about.
 
       Use predicate "asks_about" and extract the main topic/subject of each question.
 
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "asks_about", "topic", confidence_score]):
     
   strategy:
     description: "Extract strategy discussion triples from trading/financial messages"
     instruction: |
-      Extract strategy and recommendation triples from these trading/financial messages.
+      Extract strategy and recommendation triples with confidence scores from these trading/financial messages.
 
       Use predicates like:
       - "recommends" for specific strategy recommendations
@@ -50,12 +56,12 @@ templates:
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "predicate", "object", confidence_score]):
 
   analysis:
     description: "Extract analysis triples from financial messages"
     instruction: |
-      Extract analysis and opinion triples from these financial messages.
+      Extract analysis and opinion triples with confidence scores from these financial messages.
 
       Use predicates like:
       - "analyzes" for market/asset analysis
@@ -67,12 +73,12 @@ templates:
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "predicate", "object", confidence_score]):
 
   answer:
     description: "Extract answer/info triples from answer messages"
     instruction: |
-      Extract information-providing triples from these answer messages.
+      Extract information-providing triples with confidence scores from these answer messages.
 
       Use predicates like:
       - "provides_info" for informational content
@@ -84,7 +90,7 @@ templates:
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "predicate", "object", confidence_score]):
 
   qa_linking:
     description: "Link questions to their corresponding answers by analyzing content similarity and context"
@@ -106,18 +112,18 @@ templates:
 
       JSON_START
       [
-        [question_id, "answered_by", answer_id],
-        [question_id, "answered_by", answer_id]
+        [question_id, "answered_by", answer_id, confidence_score],
+        [question_id, "answered_by", answer_id, confidence_score]
       ]
       JSON_END
 
       REASONING:
-      Explain your reasoning for each link you created, including why you matched specific questions to answers and any patterns you identified.
+      Explain your reasoning for each link you created, including why you matched specific questions to answers, any patterns you identified, and how confident you are (0.0-1.0) about each link.
 
   alert:
     description: "Extract alert triples from warning/notice messages"
     instruction: |
-      Extract alert and notification triples from these warning/notice messages.
+      Extract alert and notification triples with confidence scores from these warning/notice messages.
 
       Use predicates like:
       - "alerts" for warnings and notices
@@ -129,12 +135,12 @@ templates:
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "predicate", "object", confidence_score]):
 
   performance:
     description: "Extract performance triples from trading results messages"
     instruction: |
-      Extract performance and trading result triples from these messages.
+      Extract performance and trading result triples with confidence scores from these messages.
 
       Use predicates like:
       - "reports_return" for specific returns/profits
@@ -146,12 +152,12 @@ templates:
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "predicate", "object", confidence_score]):
 
   discussion:
     description: "Extract discussion triples from general conversation messages"
     instruction: |
-      Extract general discussion triples from these conversation messages.
+      Extract general discussion triples with confidence scores from these conversation messages.
 
       Use predicates like:
       - "discusses" for general topics
@@ -163,7 +169,7 @@ templates:
       Messages:
       {message_text}
 
-      Extract triples as JSON array:
+      Extract triples with confidence scores as JSON array (format: ["author", "predicate", "object", confidence_score]):
 
 # Configuration settings
 config:
